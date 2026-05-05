@@ -560,15 +560,7 @@ export async function handleSettleFlowApi(request, segments = []) {
     const existingUser = users.find((user) => normalizeEmail(user.email) === normalizedEmail);
 
     if (existingUser) {
-      if (!verifyPassword(password, existingUser.passwordHash)) {
-        throw new ApiError("An account with this email already exists. Log in with the original password.", 409);
-      }
-
-      existingUser.id = existingUser.id || userIdFromEmail(normalizedEmail);
-      existingUser.name = existingUser.name || name;
-      existingUser.company = existingUser.company || company;
-      await writeUsers(users);
-      return { user: publicUser(existingUser), token: signSessionToken(existingUser), restored: true };
+      throw new ApiError("An account with this email already exists. Please log in instead.", 409);
     }
 
     const user = {
@@ -590,22 +582,7 @@ export async function handleSettleFlowApi(request, segments = []) {
     if (!email || !password) throw new ApiError("email and password are required", 400);
     const users = await readUsers();
     const normalizedEmail = normalizeEmail(email);
-    let user = users.find((item) => normalizeEmail(item.email) === normalizedEmail);
-
-    if (!user && process.env.VERCEL) {
-      user = {
-        id: userIdFromEmail(normalizedEmail),
-        name: displayNameFromEmail(normalizedEmail),
-        email: normalizedEmail,
-        company: "",
-        passwordHash: hashPassword(password),
-        sessionTokens: [],
-        createdAt: new Date().toISOString()
-      };
-      users.unshift(user);
-      await writeUsers(users);
-      return { user: publicUser(user), token: signSessionToken(user), restored: true };
-    }
+    const user = users.find((item) => normalizeEmail(item.email) === normalizedEmail);
 
     if (!user || !verifyPassword(password, user.passwordHash)) throw new ApiError("Invalid email or password", 401);
     user.id = user.id || userIdFromEmail(normalizedEmail);
