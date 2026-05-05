@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # SettleFlow
 
 SettleFlow is a hackathon-friendly MVP for programmable B2B payments. It lets SMEs create invoices, simulate escrow funding and payment release, and run AI-assisted transaction risk scoring.
@@ -129,3 +130,6 @@ Dashboard invoices support:
 - `Release USDC`: signs a backend SPL transfer from the escrow wallet to the seller wallet and moves the invoice to `Completed`.
 
 For production, replace the backend escrow signer with the Anchor PDA vault flow so release rules are enforced fully on-chain.
+=======
+# SettleFlow
+>>>>>>> c5504ef4ddc7938d791dbbf69832432d84f273f3
