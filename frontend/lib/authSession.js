@@ -1,5 +1,6 @@
 export const STORAGE_KEY = "settleflow_user";
 export const AUTH_CHANGED_EVENT = "settleflow-auth-changed";
+const INVOICE_CACHE_PREFIX = "settleflow_invoices_";
 
 export function getStoredSession() {
   if (typeof window === "undefined") {
@@ -33,4 +34,39 @@ export function saveSession(result) {
 export function clearSession() {
   window.localStorage.removeItem(STORAGE_KEY);
   window.dispatchEvent(new CustomEvent(AUTH_CHANGED_EVENT, { detail: null }));
+}
+
+function invoiceCacheKey(session = getStoredSession()) {
+  return session?.id ? `${INVOICE_CACHE_PREFIX}${session.id}` : "";
+}
+
+export function getCachedInvoices(session) {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  const key = invoiceCacheKey(session);
+  if (!key) {
+    return [];
+  }
+
+  try {
+    return JSON.parse(window.localStorage.getItem(key) || "[]");
+  } catch {
+    window.localStorage.removeItem(key);
+    return [];
+  }
+}
+
+export function saveCachedInvoices(invoices, session) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const key = invoiceCacheKey(session);
+  if (!key) {
+    return;
+  }
+
+  window.localStorage.setItem(key, JSON.stringify(invoices || []));
 }

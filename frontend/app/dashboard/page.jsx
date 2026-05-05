@@ -19,11 +19,18 @@ import {
   fundStablecoinEscrow,
   getAnalyticsSummary,
   getStablecoinConfig,
+  importInvoices,
   getInvoices,
   releaseStablecoinEscrow,
   syncDodoPayment
 } from "../../lib/api";
-import { AUTH_CHANGED_EVENT, getStoredSession, saveSession } from "../../lib/authSession";
+import {
+  AUTH_CHANGED_EVENT,
+  getCachedInvoices,
+  getStoredSession,
+  saveCachedInvoices,
+  saveSession
+} from "../../lib/authSession";
 
 export default function DashboardPage() {
   const [invoices, setInvoices] = useState([]);
@@ -32,6 +39,7 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [session, setSession] = useState(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const [authMode, setAuthMode] = useState(null);
   const [analytics, setAnalytics] = useState({
     totalSettled: 0,
@@ -45,9 +53,17 @@ export default function DashboardPage() {
     setError("");
     setLoading(true);
     try {
-      const [data, summary] = await Promise.all([getInvoices(), getAnalyticsSummary()]);
+      let [data, summary] = await Promise.all([getInvoices(), getAnalyticsSummary()]);
+      const cachedInvoices = getCachedInvoices(session);
+
+      if (data.length === 0 && cachedInvoices.length > 0) {
+        data = await importInvoices(cachedInvoices);
+        summary = await getAnalyticsSummary();
+      }
+
       setInvoices(data);
       setAnalytics(summary);
+      saveCachedInvoices(data, session);
     } catch (err) {
       setError(err.message);
       if (err.message.toLowerCase().includes("login")) {
@@ -62,9 +78,11 @@ export default function DashboardPage() {
   useEffect(() => {
     const storedSession = getStoredSession();
     setSession(storedSession);
+    setSessionReady(true);
 
     function handleAuthChanged(event) {
       setSession(event.detail || getStoredSession());
+      setSessionReady(true);
     }
 
     window.addEventListener(AUTH_CHANGED_EVENT, handleAuthChanged);
@@ -77,6 +95,10 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    if (!sessionReady) {
+      return;
+    }
+
     if (session?.token) {
       loadInvoices();
       return;
@@ -85,7 +107,7 @@ export default function DashboardPage() {
     setInvoices([]);
     setAnalytics({ totalSettled: 0, avgSettlementTimeHours: 0, totalInvoices: 0 });
     setLoading(false);
-  }, [session?.token]);
+  }, [sessionReady, session?.token]);
 
   function promptLogin() {
     setError("Please log in before creating invoices or moving funds.");
@@ -117,7 +139,11 @@ export default function DashboardPage() {
     setNotice("");
     try {
       const updated = await action(id);
-      setInvoices((current) => current.map((invoice) => (invoice.id === id ? updated : invoice)));
+      setInvoices((current) => {
+        const next = current.map((invoice) => (invoice.id === id ? updated : invoice));
+        saveCachedInvoices(next, session);
+        return next;
+      });
       const summary = await getAnalyticsSummary();
       setAnalytics(summary);
       setNotice(`${updated.id} updated to ${updated.status}.`);
@@ -150,7 +176,11 @@ export default function DashboardPage() {
     setNotice("");
     try {
       await deleteInvoice(id);
-      setInvoices((current) => current.filter((invoice) => invoice.id !== id));
+      setInvoices((current) => {
+        const next = current.filter((invoice) => invoice.id !== id);
+        saveCachedInvoices(next, session);
+        return next;
+      });
       const summary = await getAnalyticsSummary();
       setAnalytics(summary);
       setNotice("Invoice deleted.");
@@ -174,7 +204,11 @@ export default function DashboardPage() {
     setNotice("");
     try {
       const result = await createDodoCheckout(id);
-      setInvoices((current) => current.map((invoice) => (invoice.id === id ? result.invoice : invoice)));
+      setInvoices((current) => {
+        const next = current.map((invoice) => (invoice.id === id ? result.invoice : invoice));
+        saveCachedInvoices(next, session);
+        return next;
+      });
       setNotice(`Dodo checkout created for ${Number(result.checkout?.intendedAmount || 0).toLocaleString()} USDC.`);
 
       if (result.checkout?.checkoutUrl) {
@@ -303,7 +337,11 @@ export default function DashboardPage() {
 
       await connection.confirmTransaction(signature, "confirmed");
       const updated = await fundStablecoinEscrow(invoice.id, buyerPublicKey.toBase58(), signature, paymentStage);
-      setInvoices((current) => current.map((item) => (item.id === invoice.id ? updated : item)));
+      setInvoices((current) => {
+        const next = current.map((item) => (item.id === invoice.id ? updated : item));
+        saveCachedInvoices(next, session);
+        return next;
+      });
       const summary = await getAnalyticsSummary();
       setAnalytics(summary);
       setNotice(`${stageAmount.toLocaleString()} USDC locked in escrow. Tx: ${signature.slice(0, 8)}...`);
@@ -377,7 +415,7 @@ export default function DashboardPage() {
               Create invoices, collect funds through real Dodo Payments checkout sessions, release escrow, and review AI risk signals.
             </p>
             <p className="mt-3 inline-flex rounded-full border border-yellow-200 bg-yellow-50 px-4 py-2 text-sm font-black text-yellow-800">
-              ⚠️ Running on Devnet (Test Mode)
+              Running on Devnet (Test Mode)
             </p>
           </div>
           <button onClick={isAuthenticated ? loadInvoices : promptLogin} className="button-secondary gap-2">
@@ -413,7 +451,11 @@ export default function DashboardPage() {
             onLoginRequired={promptLogin}
             onError={setError}
             onCreated={(invoice) => {
-              setInvoices((current) => [invoice, ...current]);
+              setInvoices((current) => {
+                const next = [invoice, ...current];
+                saveCachedInvoices(next, session);
+                return next;
+              });
               setAnalytics((current) => ({ ...current, totalInvoices: current.totalInvoices + 1 }));
             }}
           />

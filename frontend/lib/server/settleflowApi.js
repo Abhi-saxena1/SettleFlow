@@ -18,6 +18,11 @@ const USERS_FILE = path.join(DATA_DIR, "users.json");
 const ITERATIONS = 120000;
 const KEY_LENGTH = 64;
 const DIGEST = "sha512";
+const memoryStore = globalThis.__settleflowMemoryStore || {
+  [INVOICES_FILE]: null,
+  [USERS_FILE]: null
+};
+globalThis.__settleflowMemoryStore = memoryStore;
 
 const mockBuyerHistory = [
   { id: "TX-901", amount: 9200, status: "paid", settledInHours: 4 },
@@ -60,13 +65,20 @@ class ApiError extends Error {
 }
 
 async function readJson(file, fallback) {
+  if (memoryStore[file]) {
+    return memoryStore[file];
+  }
+
   try {
     const raw = await fs.readFile(file, "utf-8");
-    return JSON.parse(raw);
+    const data = JSON.parse(raw);
+    memoryStore[file] = data;
+    return data;
   } catch (error) {
     if (error.code === "ENOENT") {
       await fs.mkdir(DATA_DIR, { recursive: true });
       await fs.writeFile(file, JSON.stringify(fallback, null, 2));
+      memoryStore[file] = fallback;
       return fallback;
     }
     throw error;
@@ -74,6 +86,7 @@ async function readJson(file, fallback) {
 }
 
 async function writeJson(file, data) {
+  memoryStore[file] = data;
   await fs.mkdir(DATA_DIR, { recursive: true });
   await fs.writeFile(file, JSON.stringify(data, null, 2));
 }
@@ -590,6 +603,32 @@ export async function handleSettleFlowApi(request, segments = []) {
   if (method === "GET" && route === "/invoice/all") {
     const invoices = await readInvoices();
     return invoices.filter((invoice) => invoice.ownerUserId === user.id && invoice.id).map(withPaymentPlan);
+  }
+
+  if (method === "POST" && route === "/invoice/import") {
+    const body = await jsonBody(request);
+    const incoming = Array.isArray(body.invoices) ? body.invoices : [];
+    const ownedIncoming = incoming
+      .filter((invoice) => invoice?.id)
+      .map((invoice) => ({
+        ...invoice,
+        ownerUserId: user.id,
+        source: invoice.source || "client_restore"
+      }));
+    const invoices = await readInvoices();
+    const byId = new Map(invoices.map((invoice) => [invoice.id, invoice]));
+
+    for (const invoice of ownedIncoming) {
+      byId.set(invoice.id, {
+        ...(byId.get(invoice.id) || {}),
+        ...invoice
+      });
+    }
+
+    const merged = Array.from(byId.values());
+    await writeInvoices(merged);
+    console.log("Imported client invoice backup", { userId: user.id, count: ownedIncoming.length });
+    return merged.filter((invoice) => invoice.ownerUserId === user.id && invoice.id).map(withPaymentPlan);
   }
 
   if (method === "GET" && route === "/analytics/summary") {

@@ -21,7 +21,7 @@ export default function Navbar() {
         </div>
         <div className="flex items-center gap-2">
           <span className="hidden rounded-full border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs font-black text-yellow-800 lg:inline-flex">
-            ⚠️ Devnet Test Mode
+            Devnet Test Mode
           </span>
           <AuthButtons />
           <WalletConnectButton />

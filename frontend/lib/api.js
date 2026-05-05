@@ -38,6 +38,13 @@ export function getInvoices() {
   return request("/invoice/all");
 }
 
+export function importInvoices(invoices) {
+  return request("/invoice/import", {
+    method: "POST",
+    body: JSON.stringify({ invoices })
+  });
+}
+
 export function getAnalyticsSummary() {
   return request("/analytics/summary");
 }
