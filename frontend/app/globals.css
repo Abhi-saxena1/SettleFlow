@@ -1,0 +1,201 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #07110d;
+  background: #f7fbf8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(190, 217, 138, 0.42), transparent 34rem),
+    linear-gradient(180deg, #f8fbef 0%, #ffffff 48%, #f5fbf7 100%);
+}
+
+button,
+a,
+input {
+  transition: all 180ms ease;
+}
+
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float-panel {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+
+@keyframes soft-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(23, 178, 106, 0.22);
+  }
+  50% {
+    box-shadow: 0 0 0 12px rgba(23, 178, 106, 0);
+  }
+}
+
+@keyframes shimmer {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes progress-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes scan-line {
+  0% {
+    transform: translateY(-20%);
+    opacity: 0;
+  }
+  18%,
+  72% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(560%);
+    opacity: 0;
+  }
+}
+
+@keyframes slow-tilt {
+  0%,
+  100% {
+    transform: rotate(-1.2deg) translateY(0);
+  }
+  50% {
+    transform: rotate(1deg) translateY(-10px);
+  }
+}
+
+@layer components {
+  .container-shell {
+    @apply mx-auto w-full max-w-7xl px-5 sm:px-6 lg:px-8;
+  }
+
+  .button-primary {
+    @apply inline-flex items-center justify-center rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white shadow-md hover:-translate-y-0.5 hover:bg-black hover:shadow-lg;
+  }
+
+  .button-secondary {
+    @apply inline-flex items-center justify-center rounded-full border border-black/10 bg-white px-5 py-3 text-sm font-semibold text-ink shadow-sm hover:-translate-y-0.5 hover:border-leaf/30 hover:shadow-md;
+  }
+
+  .section-kicker {
+    @apply text-sm font-semibold uppercase tracking-[0.2em] text-leaf;
+  }
+
+  .animate-reveal {
+    animation: reveal-up 720ms ease both;
+  }
+
+  .animate-float-panel {
+    animation: float-panel 5.4s ease-in-out infinite;
+  }
+
+  .animate-slow-tilt {
+    animation: slow-tilt 7s ease-in-out infinite;
+  }
+
+  .animate-soft-pulse {
+    animation: soft-pulse 2.8s ease-in-out infinite;
+  }
+
+  .animate-marquee {
+    animation: marquee 22s linear infinite;
+  }
+
+  .animate-scan-line {
+    animation: scan-line 3.6s ease-in-out infinite;
+  }
+
+  .progress-fill {
+    animation: progress-fill 1.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+    transform-origin: left;
+  }
+
+  .shimmer-surface {
+    @apply relative overflow-hidden;
+  }
+
+  .shimmer-surface::after {
+    animation: shimmer 3.5s ease-in-out infinite;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+    content: "";
+    inset: 0;
+    position: absolute;
+    width: 60%;
+  }
+
+  .paper-grid {
+    background-color: #fffef9;
+    background-image:
+      linear-gradient(rgba(7, 17, 13, 0.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(7, 17, 13, 0.055) 1px, transparent 1px);
+    background-size: 16px 16px;
+  }
+
+  .pin-shell {
+    background: #c8dc94;
+    border-radius: 1.9rem;
+    box-shadow: 0 34px 80px rgba(7, 17, 13, 0.18);
+  }
+
+  .editorial-highlight {
+    background: linear-gradient(180deg, transparent 48%, #f7b8c7 48%, #f7b8c7 82%, transparent 82%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+}

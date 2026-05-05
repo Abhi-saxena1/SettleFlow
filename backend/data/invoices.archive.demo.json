@@ -1,0 +1,413 @@
+[
+  {
+    "id": "INV-I4W0B5",
+    "amount": 15000,
+    "buyer": "Northstar Retail",
+    "seller": "Atlas Components",
+    "status": "Pending",
+    "risk": {
+      "risk_score": 32,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Buyer history and invoice amount are within normal range."
+    },
+    "escrow": {
+      "locked": false,
+      "released": false,
+      "mockTx": null
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "checkout_created",
+      "sessionId": "cks_0Ne7n1RkIshudyGDxiBH4",
+      "checkoutUrl": "https://dodo.pe/s352jba79e",
+      "paymentId": null,
+      "mode": "test_mode",
+      "message": null,
+      "createdAt": "2026-05-04T18:21:07.804Z"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 15000,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-04T18:21:04.766Z"
+  },
+  {
+    "id": "INV-FFT6XO",
+    "amount": 1,
+    "buyer": "USDC Config Fixed",
+    "seller": "SettleFlow",
+    "status": "Completed",
+    "risk": {
+      "risk_score": 27,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Buyer history and invoice amount are within normal range."
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "usdc_release_INV-FFT6XO"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "released",
+      "amount": 1,
+      "escrowTx": "2wYRB5wrmQV5gn66fBiC6LRmWw2TfXKi2YL5AZ1utmRrcCbNCysorZx9BRstkwVuXk12ieHNSTP1i1usQ76xnciv",
+      "releaseTx": "4joQxeaaTHe8cssaRdcSjfq7dR2F7MT4frw8KpYmHzHoLf865eWZGjxxTVUtm4yKypXcb71EsynbQXeukDj2zgSh",
+      "mode": "real_spl",
+      "buyerWallet": "9CnJaEsMe1jjJ1acUueXzZkxXbQF9DedKJ212pKDn2vY",
+      "escrowWallet": "3LrdudupQCuVUacgdsRMJr8ATrXzssN7cFgmAQeum8kU",
+      "slot": 460080580,
+      "sellerWallet": "3LrdudupQCuVUacgdsRMJr8ATrXzssN7cFgmAQeum8kU",
+      "note": "USDC released from backend escrow signer."
+    },
+    "createdAt": "2026-05-04T17:32:31.191Z"
+  },
+  {
+    "id": "INV-VHT_PO",
+    "amount": 1,
+    "buyer": "Real SPL Config Test",
+    "seller": "SettleFlow",
+    "status": "Completed",
+    "risk": {
+      "risk_score": 27,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Buyer history and invoice amount are within normal range."
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "mock_release_INV-VHT_PO"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "",
+      "status": "not_started",
+      "amount": 1,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-04T17:23:33.343Z"
+  },
+  {
+    "id": "INV-I9SWRE",
+    "amount": 8800,
+    "buyer": "USDC Buyer",
+    "seller": "USDC Seller",
+    "status": "Completed",
+    "risk": {
+      "risk_score": 29,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Buyer history and invoice amount are within normal range."
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "usdc_release_INV-I9SWRE"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "devnet-usdc-placeholder",
+      "status": "released",
+      "amount": 8800,
+      "escrowTx": "mock_usdc_lock_INV-I9SWRE__UsUJGBq",
+      "releaseTx": "mock_usdc_release_INV-I9SWRE_zWVxZCR5",
+      "mode": "mock",
+      "buyerWallet": "buyer_devnet_wallet",
+      "sellerWallet": "seller_devnet_wallet"
+    },
+    "createdAt": "2026-05-04T17:13:11.372Z"
+  },
+  {
+    "id": "INV-UP1PE7",
+    "amount": 1100,
+    "buyer": "Dodo Live Test Buyer",
+    "seller": "SettleFlow",
+    "status": "Funded",
+    "risk": {
+      "risk_score": 27,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Buyer history and invoice amount are within normal range."
+    },
+    "escrow": {
+      "locked": true,
+      "released": false,
+      "mockTx": "usdc_escrow_INV-UP1PE7"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "checkout_created",
+      "sessionId": "cks_0Ne72N8h0ukRngcNWEkXA",
+      "checkoutUrl": "https://dodo.pe/kc2d2bjj3d",
+      "paymentId": null,
+      "mode": "test_mode",
+      "message": null,
+      "createdAt": "2026-05-04T14:15:51.600Z"
+    },
+    "createdAt": "2026-05-04T14:14:15.067Z",
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "devnet-usdc-placeholder",
+      "status": "escrow_locked",
+      "amount": 1100,
+      "buyerWallet": "mock_buyer_wallet",
+      "escrowTx": "mock_usdc_lock_INV-UP1PE7_yJ7xNaNz",
+      "releaseTx": null,
+      "mode": "mock"
+    }
+  },
+  {
+    "id": "INV-3EQGU8",
+    "amount": 5200,
+    "buyer": "Dodo Error Body Check",
+    "seller": "SettleFlow",
+    "status": "Completed",
+    "risk": {
+      "risk_score": 28,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Buyer history and invoice amount are within normal range."
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "mock_release_INV-3EQGU8"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "succeeded",
+      "sessionId": "cks_0Ne771cwJP220WCYBwd6P",
+      "checkoutUrl": "https://dodo.pe/e46ese66xq",
+      "paymentId": "pay_0Ne779dIPfgObvzP4ry0J",
+      "mode": "test_mode",
+      "message": null,
+      "createdAt": "2026-05-04T14:40:19.486Z",
+      "lastEvent": "payment.succeeded",
+      "updatedAt": "2026-05-04T14:42:50.727Z"
+    },
+    "createdAt": "2026-05-04T13:00:02.364Z"
+  },
+  {
+    "id": "INV-LJKJM7",
+    "amount": 5100,
+    "buyer": "Real Dodo Config Check",
+    "seller": "SettleFlow",
+    "status": "Completed",
+    "risk": {
+      "risk_score": 28,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Buyer history and invoice amount are within normal range."
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "usdc_release_INV-LJKJM7"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "checkout_created",
+      "sessionId": "cks_0Ne7XLeSeHsTe8UR3O5Vd",
+      "checkoutUrl": "https://dodo.pe/bpjsb7nev2",
+      "paymentId": null,
+      "mode": "test_mode",
+      "message": null,
+      "createdAt": "2026-05-04T16:58:43.120Z"
+    },
+    "createdAt": "2026-05-04T12:59:38.347Z",
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "devnet-usdc-placeholder",
+      "status": "released",
+      "amount": 5100,
+      "buyerWallet": "mock_buyer_wallet",
+      "escrowTx": "mock_usdc_lock_INV-LJKJM7_fMb-Ajp8",
+      "releaseTx": "mock_usdc_release_INV-LJKJM7_mU2HdQz0",
+      "mode": "mock",
+      "sellerWallet": "mock_seller_wallet"
+    }
+  },
+  {
+    "id": "INV-9MORSA",
+    "amount": 27500,
+    "buyer": "QA Buyer",
+    "seller": "QA Seller",
+    "status": "Completed",
+    "risk": {
+      "risk_score": 36,
+      "risk_level": "Medium",
+      "recommendation": "Fund escrow, but require delivery confirmation and keep release approval manual."
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "mock_release_INV-9MORSA"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "succeeded",
+      "sessionId": "mock_dodo_NVr0aOUVhI",
+      "checkoutUrl": "http://localhost:3000/dashboard?invoice_id=INV-9MORSA&dodo_session_id=mock_dodo_NVr0aOUVhI&status=mock_paid",
+      "paymentId": "mock_payment_mock_dodo_NVr0aOUVhI",
+      "mode": "mock",
+      "message": "Mock Dodo checkout created. Add DODO_PAYMENTS_API_KEY and DODO_PAYMENTS_PRODUCT_ID for live test-mode sessions.",
+      "createdAt": "2026-05-04T12:02:28.820Z",
+      "updatedAt": "2026-05-04T12:02:28.839Z"
+    },
+    "createdAt": "2026-05-04T12:02:28.620Z"
+  },
+  {
+    "id": "INV-A2GLBS",
+    "amount": 15000,
+    "buyer": "Northstar Retail",
+    "seller": "Atlas Components",
+    "status": "Completed",
+    "risk": {
+      "risk_score": 32,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Buyer history and invoice amount are within normal range."
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "mock_release_INV-A2GLBS"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "checkout_created",
+      "sessionId": "mock_dodo_k4OeuR2vK5",
+      "checkoutUrl": "http://localhost:3000/dashboard?invoice_id=INV-A2GLBS&dodo_session_id=mock_dodo_k4OeuR2vK5&status=mock_paid",
+      "paymentId": null,
+      "mode": "mock",
+      "message": "Mock Dodo checkout created. Add DODO_PAYMENTS_API_KEY and DODO_PAYMENTS_PRODUCT_ID for live test-mode sessions.",
+      "createdAt": "2026-05-03T16:10:43.705Z"
+    },
+    "createdAt": "2026-05-03T16:10:30.869Z"
+  },
+  {
+    "id": "INV-YO7UM9",
+    "amount": 19000,
+    "buyer": "Dodo Demo Buyer",
+    "seller": "SettleFlow Seller",
+    "status": "Completed",
+    "risk": {
+      "risk_score": 33,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Buyer history and invoice amount are within normal range."
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "mock_release_INV-YO7UM9"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "succeeded",
+      "sessionId": "mock_dodo_kMj5HlVgr2",
+      "checkoutUrl": "http://localhost:3000/dashboard?invoice_id=INV-YO7UM9&dodo_session_id=mock_dodo_kMj5HlVgr2&status=mock_paid",
+      "paymentId": "mock_payment_mock_dodo_kMj5HlVgr2",
+      "mode": "mock",
+      "message": "Mock Dodo checkout created. Add DODO_PAYMENTS_API_KEY and DODO_PAYMENTS_PRODUCT_ID for live test-mode sessions.",
+      "createdAt": "2026-05-03T16:07:06.008Z",
+      "updatedAt": "2026-05-03T16:07:06.016Z"
+    },
+    "createdAt": "2026-05-03T16:07:05.918Z"
+  },
+  {
+    "id": "INV-BRRBXC",
+    "amount": 31000,
+    "buyer": "Demo Buyer",
+    "seller": "Demo Seller",
+    "status": "Completed",
+    "risk": {
+      "risk_score": 37,
+      "risk_level": "Medium",
+      "recommendation": "Fund escrow, but require delivery confirmation and keep release approval manual."
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "mock_release_INV-BRRBXC"
+    },
+    "createdAt": "2026-05-03T14:55:03.044Z"
+  },
+  {
+    "id": "INV-1001",
+    "amount": 12500,
+    "buyer": "Northstar Retail",
+    "seller": "Atlas Components",
+    "status": "Completed",
+    "risk": {
+      "risk_score": 18,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Transaction pattern looks consistent with normal buyer behavior."
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "mock_release_INV-1001"
+    },
+    "createdAt": "2026-05-03T12:00:00.000Z",
+    "payment": {
+      "provider": "dodo",
+      "status": "checkout_created",
+      "sessionId": "mock_dodo_hPysI3rmx0",
+      "checkoutUrl": "http://localhost:3000/dashboard?invoice_id=INV-1001&dodo_session_id=mock_dodo_hPysI3rmx0&status=mock_paid",
+      "mode": "mock",
+      "message": "Mock Dodo checkout created. Add DODO_PAYMENTS_API_KEY and DODO_PAYMENTS_PRODUCT_ID for live test-mode sessions.",
+      "createdAt": "2026-05-03T16:07:54.678Z"
+    }
+  },
+  {
+    "id": "INV-1002",
+    "amount": 48000,
+    "buyer": "Meridian Foods",
+    "seller": "ClearLedger Logistics",
+    "status": "Completed",
+    "risk": {
+      "risk_score": 44,
+      "risk_level": "Medium",
+      "recommendation": "Proceed with escrow. Request delivery confirmation before release."
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "mock_release_INV-1002"
+    },
+    "createdAt": "2026-05-03T12:10:00.000Z"
+  }
+]

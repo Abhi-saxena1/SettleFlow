@@ -1,0 +1,942 @@
+[
+  {
+    "id": "INV-T4GBBH",
+    "source": "user",
+    "ownerUserId": "USR-Q6-XL4TR",
+    "amount": 1,
+    "currency": "USDC",
+    "buyer": "Northstar Retail",
+    "seller": "Atlas Components",
+    "status": "Completed",
+    "upfront_percentage": 50,
+    "upfront_paid": true,
+    "remaining_paid": true,
+    "paid_amount": 1,
+    "funded_at": "2026-05-05T14:34:35.189Z",
+    "completed_at": "2026-05-05T14:46:08.510Z",
+    "risk": {
+      "risk_score": 22,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. 1 USDC is within the low-risk range for this buyer history.",
+      "analyzed_amount": 1
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "usdc_release_INV-T4GBBH"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "released",
+      "amount": 1,
+      "escrowTx": "4mKDrwvDGxpTtDyiMwAxjp3pTEE4aajFzu4r7ToeWwxjyPcRw6RmDMuiGeuFC9oser2ibiVb5mG4PjNNd5meEgfN",
+      "releaseTx": "5JYKwDETVcrCYD1pXCEg8ZTKeXi8kJVkD619wNZ33WzYPzwBZ2oixyHY4ukwdqbYqfptLGatuDh1EyxgoX93q6dJ",
+      "mode": "real_spl",
+      "buyerWallet": "AGVW7GrJZfLugNnKfpmXrsZXRy6gwXosZ1yu4iPxq4CD",
+      "escrowWallet": "3LrdudupQCuVUacgdsRMJr8ATrXzssN7cFgmAQeum8kU",
+      "escrowTokenAccount": "2hhVcNtZXjvChMUe7inXWXdZKB8UyUFbnTWg2PEt8G6i",
+      "upfrontTx": "4mKDrwvDGxpTtDyiMwAxjp3pTEE4aajFzu4r7ToeWwxjyPcRw6RmDMuiGeuFC9oser2ibiVb5mG4PjNNd5meEgfN",
+      "upfrontExplorerUrl": "https://explorer.solana.com/tx/4mKDrwvDGxpTtDyiMwAxjp3pTEE4aajFzu4r7ToeWwxjyPcRw6RmDMuiGeuFC9oser2ibiVb5mG4PjNNd5meEgfN?cluster=devnet",
+      "remainingTx": "4NBFpNXzLqdypcpmQYWtSue3LmSojnnpthcE2dbww1S9iVqtFauyvqiH3npmwyKp4Ru2sZbJK25e2S96QnFr3xnx",
+      "remainingExplorerUrl": "https://explorer.solana.com/tx/4NBFpNXzLqdypcpmQYWtSue3LmSojnnpthcE2dbww1S9iVqtFauyvqiH3npmwyKp4Ru2sZbJK25e2S96QnFr3xnx?cluster=devnet",
+      "escrowExplorerUrl": "https://explorer.solana.com/tx/4mKDrwvDGxpTtDyiMwAxjp3pTEE4aajFzu4r7ToeWwxjyPcRw6RmDMuiGeuFC9oser2ibiVb5mG4PjNNd5meEgfN?cluster=devnet",
+      "slot": 460277389,
+      "lockedAmount": 1,
+      "sellerWallet": "9CnJaEsMe1jjJ1acUueXzZkxXbQF9DedKJ212pKDn2vY",
+      "releaseExplorerUrl": "https://explorer.solana.com/tx/5JYKwDETVcrCYD1pXCEg8ZTKeXi8kJVkD619wNZ33WzYPzwBZ2oixyHY4ukwdqbYqfptLGatuDh1EyxgoX93q6dJ?cluster=devnet",
+      "sourceTokenAccount": "2hhVcNtZXjvChMUe7inXWXdZKB8UyUFbnTWg2PEt8G6i",
+      "destinationTokenAccount": "ELjxjL3WB78DZvAL2s1kNApph1ceqk6irqaWchxFhLcN",
+      "note": "USDC released from backend escrow signer."
+    },
+    "createdAt": "2026-05-05T14:20:12.235Z"
+  },
+  {
+    "id": "INV-8WRTUJ",
+    "source": "user",
+    "ownerUserId": "USR-Q6-XL4TR",
+    "amount": 1,
+    "currency": "USDC",
+    "buyer": "Northstar Retail",
+    "seller": "Atlas Components",
+    "status": "Partially Funded",
+    "upfront_percentage": 50,
+    "upfront_paid": true,
+    "remaining_paid": false,
+    "paid_amount": 0.5,
+    "funded_at": "2026-05-05T14:19:56.003Z",
+    "completed_at": null,
+    "risk": {
+      "risk_score": 22,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. 1 USDC is within the low-risk range for this buyer history.",
+      "analyzed_amount": 1
+    },
+    "escrow": {
+      "locked": true,
+      "released": false,
+      "mockTx": "partial_upfront_INV-8WRTUJ"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 1,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-05T14:18:32.307Z"
+  },
+  {
+    "id": "INV-YYRDI5",
+    "source": "user",
+    "ownerUserId": "USR-Q6-XL4TR",
+    "amount": 2,
+    "currency": "USDC",
+    "buyer": "Northstar Retail",
+    "seller": "Atlas Components",
+    "status": "Completed",
+    "upfront_percentage": 50,
+    "upfront_paid": true,
+    "remaining_paid": true,
+    "paid_amount": 2,
+    "funded_at": "2026-05-05T14:03:46.251Z",
+    "completed_at": "2026-05-05T14:04:00.364Z",
+    "risk": {
+      "risk_score": 22,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. 2 USDC is within the low-risk range for this buyer history.",
+      "analyzed_amount": 2
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "usdc_release_INV-YYRDI5"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "released",
+      "amount": 2,
+      "escrowTx": "4mNpw8CjnDgaJDwyEb7zJEN3RNLsoXCxbDWkTqGG8XytvKAH7SwFbkyKtojWygZ5BmHwqgHkPsskTXRd74V2Zhzm",
+      "releaseTx": "TvUjTuaMn9N9iGLFbEdf5kFyAfNKRoc1z9vcMGusQs25ewaUXpQagNKEcbnzE7AqMq4W5E9dS7u5tr3Q7Nimjod",
+      "mode": "real_spl",
+      "buyerWallet": "AGVW7GrJZfLugNnKfpmXrsZXRy6gwXosZ1yu4iPxq4CD",
+      "escrowWallet": "3LrdudupQCuVUacgdsRMJr8ATrXzssN7cFgmAQeum8kU",
+      "escrowTokenAccount": "2hhVcNtZXjvChMUe7inXWXdZKB8UyUFbnTWg2PEt8G6i",
+      "escrowExplorerUrl": "https://explorer.solana.com/tx/4mNpw8CjnDgaJDwyEb7zJEN3RNLsoXCxbDWkTqGG8XytvKAH7SwFbkyKtojWygZ5BmHwqgHkPsskTXRd74V2Zhzm?cluster=devnet",
+      "slot": 460271602,
+      "sellerWallet": "9CnJaEsMe1jjJ1acUueXzZkxXbQF9DedKJ212pKDn2vY",
+      "releaseExplorerUrl": "https://explorer.solana.com/tx/TvUjTuaMn9N9iGLFbEdf5kFyAfNKRoc1z9vcMGusQs25ewaUXpQagNKEcbnzE7AqMq4W5E9dS7u5tr3Q7Nimjod?cluster=devnet",
+      "sourceTokenAccount": "2hhVcNtZXjvChMUe7inXWXdZKB8UyUFbnTWg2PEt8G6i",
+      "destinationTokenAccount": "ELjxjL3WB78DZvAL2s1kNApph1ceqk6irqaWchxFhLcN",
+      "note": "USDC released from backend escrow signer."
+    },
+    "createdAt": "2026-05-05T14:03:14.547Z"
+  },
+  {
+    "id": "INV-CO7D3L",
+    "source": "user",
+    "ownerUserId": "USR-Q6-XL4TR",
+    "amount": 1,
+    "currency": "USDC",
+    "buyer": "Northstar Retail",
+    "seller": "Atlas Components",
+    "status": "Completed",
+    "upfront_percentage": 50,
+    "upfront_paid": true,
+    "remaining_paid": true,
+    "paid_amount": 1,
+    "funded_at": "2026-05-05T14:00:55.056Z",
+    "completed_at": "2026-05-05T14:01:15.270Z",
+    "risk": {
+      "risk_score": 22,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. 1 USDC is within the low-risk range for this buyer history.",
+      "analyzed_amount": 1
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "usdc_release_INV-CO7D3L"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "released",
+      "amount": 1,
+      "escrowTx": "3sd8p46bYiME1LpbFepNpdidcwpiqYhzWn5j2c3b3YZRr6Cpa2bri9NCnynMBBnYH6R4WiJCknbykcjWhvFwQkP8",
+      "releaseTx": "zooL5EHZrddwrwERYYov12cmvCfT7brxE5uYNVQktNE7pqcKHZXQsiTgE1HMEGgfNb9nEUGrgJzZWk4gRpTWeWw",
+      "mode": "real_spl",
+      "buyerWallet": "9CnJaEsMe1jjJ1acUueXzZkxXbQF9DedKJ212pKDn2vY",
+      "escrowWallet": "3LrdudupQCuVUacgdsRMJr8ATrXzssN7cFgmAQeum8kU",
+      "escrowTokenAccount": "2hhVcNtZXjvChMUe7inXWXdZKB8UyUFbnTWg2PEt8G6i",
+      "escrowExplorerUrl": "https://explorer.solana.com/tx/3sd8p46bYiME1LpbFepNpdidcwpiqYhzWn5j2c3b3YZRr6Cpa2bri9NCnynMBBnYH6R4WiJCknbykcjWhvFwQkP8?cluster=devnet",
+      "slot": 460271150,
+      "sellerWallet": "AGVW7GrJZfLugNnKfpmXrsZXRy6gwXosZ1yu4iPxq4CD",
+      "releaseExplorerUrl": "https://explorer.solana.com/tx/zooL5EHZrddwrwERYYov12cmvCfT7brxE5uYNVQktNE7pqcKHZXQsiTgE1HMEGgfNb9nEUGrgJzZWk4gRpTWeWw?cluster=devnet",
+      "sourceTokenAccount": "2hhVcNtZXjvChMUe7inXWXdZKB8UyUFbnTWg2PEt8G6i",
+      "destinationTokenAccount": "QrZZ5JZqU6cNqa3RacFKiv2YPMefdsoqyeEkR2Fs7NE",
+      "note": "USDC released from backend escrow signer."
+    },
+    "createdAt": "2026-05-05T13:59:46.976Z"
+  },
+  {
+    "id": "INV-_F6GCC",
+    "source": "user",
+    "ownerUserId": "USR-Q6-XL4TR",
+    "amount": 15000,
+    "currency": "USDC",
+    "buyer": "Northstar Retail",
+    "seller": "Atlas Components",
+    "status": "Pending",
+    "upfront_percentage": 50,
+    "upfront_paid": false,
+    "remaining_paid": false,
+    "paid_amount": 0,
+    "funded_at": null,
+    "completed_at": null,
+    "risk": {
+      "risk_score": 29,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. 15,000 USDC is within the low-risk range for this buyer history.",
+      "analyzed_amount": 15000
+    },
+    "escrow": {
+      "locked": false,
+      "released": false,
+      "mockTx": null
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 15000,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-05T13:28:44.709Z"
+  },
+  {
+    "id": "INV-NWGUHJ",
+    "source": "user",
+    "ownerUserId": "USR-Q6-XL4TR",
+    "amount": 1,
+    "currency": "USDC",
+    "buyer": "Northstar Retail",
+    "seller": "Atlas Components",
+    "status": "Completed",
+    "upfront_percentage": 50,
+    "upfront_paid": true,
+    "remaining_paid": true,
+    "paid_amount": 1,
+    "funded_at": "2026-05-05T11:51:50.963Z",
+    "completed_at": "2026-05-05T11:52:35.212Z",
+    "risk": {
+      "risk_score": 22,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. 1 USDC is within the low-risk range for this buyer history.",
+      "analyzed_amount": 1
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "usdc_release_INV-NWGUHJ"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "released",
+      "amount": 1,
+      "escrowTx": "3CmW93KEt3DcJwFLbkoGEYMRL5sbUWdSMD9h6dZKeLSPo21WDuAiQ8dJdeJPXLhFKHDfwn3AJFQWb8yoC1XEfweG",
+      "releaseTx": "dfk1HnX31D8T6jJj1h1gufA6Ya79UPeVmyKVWVfgjJYzw81JrZggSymLr4Vtf24tPop69z5C6cxxA88Jnhi7tf3",
+      "mode": "real_spl",
+      "buyerWallet": "AGVW7GrJZfLugNnKfpmXrsZXRy6gwXosZ1yu4iPxq4CD",
+      "escrowWallet": "3LrdudupQCuVUacgdsRMJr8ATrXzssN7cFgmAQeum8kU",
+      "slot": 460250751,
+      "sellerWallet": "AGVW7GrJZfLugNnKfpmXrsZXRy6gwXosZ1yu4iPxq4CD",
+      "note": "USDC released from backend escrow signer."
+    },
+    "createdAt": "2026-05-05T11:50:24.899Z"
+  },
+  {
+    "id": "INV-L3NYGJ",
+    "source": "user",
+    "ownerUserId": "USR-Q6-XL4TR",
+    "amount": 15000,
+    "currency": "USDC",
+    "buyer": "Northstar Retail",
+    "seller": "Atlas Components",
+    "status": "Pending",
+    "upfront_percentage": 50,
+    "upfront_paid": false,
+    "remaining_paid": false,
+    "paid_amount": 0,
+    "funded_at": null,
+    "completed_at": null,
+    "risk": {
+      "risk_score": 29,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. 15,000 USDC is within the low-risk range for this buyer history.",
+      "analyzed_amount": 15000
+    },
+    "escrow": {
+      "locked": false,
+      "released": false,
+      "mockTx": null
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "checkout_created",
+      "sessionId": "cks_0NeB0RyQranDWF3kwIG83",
+      "checkoutUrl": "https://dodo.pe/uuwapnhuqs",
+      "paymentId": null,
+      "mode": "test_mode",
+      "intendedAmount": 15000,
+      "intendedAmountMinor": 1500000,
+      "previewAmountMinor": 1500000,
+      "currency": "USD",
+      "message": null,
+      "createdAt": "2026-05-05T11:49:41.273Z"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 15000,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-05T11:49:38.676Z"
+  },
+  {
+    "id": "INV-QWPQRD",
+    "source": "user",
+    "ownerUserId": "USR-Q6-XL4TR",
+    "amount": 150,
+    "currency": "USDC",
+    "buyer": "Northstar Retail",
+    "seller": "Atlas Components",
+    "status": "Pending",
+    "upfront_percentage": 50,
+    "upfront_paid": false,
+    "remaining_paid": false,
+    "paid_amount": 0,
+    "funded_at": null,
+    "completed_at": null,
+    "risk": {
+      "risk_score": 22,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. 150 USDC is within the low-risk range for this buyer history.",
+      "analyzed_amount": 150
+    },
+    "escrow": {
+      "locked": false,
+      "released": false,
+      "mockTx": null
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "processing",
+      "sessionId": "cks_0Ne8SdQ92OLte5ABdqltz",
+      "checkoutUrl": "https://dodo.pe/f8hj6yd73c",
+      "paymentId": null,
+      "mode": "test_mode",
+      "intendedAmount": 150,
+      "intendedAmountMinor": 15000,
+      "previewAmountMinor": 15000,
+      "currency": "USD",
+      "message": null,
+      "createdAt": "2026-05-04T21:59:55.669Z",
+      "updatedAt": "2026-05-05T11:48:08.848Z"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 150,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-04T21:59:01.028Z"
+  },
+  {
+    "id": "INV-NKBP1C",
+    "source": "user",
+    "ownerUserId": "USR-Z2YD5E4I",
+    "amount": 15000,
+    "currency": "USDC",
+    "buyer": "Dodo Buyer",
+    "seller": "Dodo Seller",
+    "status": "Pending",
+    "upfront_percentage": 50,
+    "upfront_paid": false,
+    "remaining_paid": false,
+    "paid_amount": 0,
+    "funded_at": null,
+    "completed_at": null,
+    "risk": {
+      "risk_score": 29,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. 15,000 USDC is within the low-risk range for this buyer history.",
+      "analyzed_amount": 15000
+    },
+    "escrow": {
+      "locked": false,
+      "released": false,
+      "mockTx": null
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 15000,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-04T21:53:55.302Z"
+  },
+  {
+    "id": "INV-9RH7BP",
+    "source": "user",
+    "ownerUserId": "USR-B9KQ1PQN",
+    "amount": 15000,
+    "currency": "USDC",
+    "buyer": "Dodo Buyer",
+    "seller": "Dodo Seller",
+    "status": "Pending",
+    "upfront_percentage": 50,
+    "upfront_paid": false,
+    "remaining_paid": false,
+    "paid_amount": 0,
+    "funded_at": null,
+    "completed_at": null,
+    "risk": {
+      "risk_score": 29,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. 15,000 USDC is within the low-risk range for this buyer history.",
+      "analyzed_amount": 15000
+    },
+    "escrow": {
+      "locked": false,
+      "released": false,
+      "mockTx": null
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 15000,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-04T21:52:28.951Z"
+  },
+  {
+    "id": "INV-0GODDJ",
+    "source": "user",
+    "ownerUserId": "USR-TWNIOBX9",
+    "amount": 15000,
+    "currency": "USDC",
+    "buyer": "Dodo Buyer",
+    "seller": "Dodo Seller",
+    "status": "Pending",
+    "upfront_percentage": 50,
+    "upfront_paid": false,
+    "remaining_paid": false,
+    "paid_amount": 0,
+    "funded_at": null,
+    "completed_at": null,
+    "risk": {
+      "risk_score": 29,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. 15,000 USDC is within the low-risk range for this buyer history.",
+      "analyzed_amount": 15000
+    },
+    "escrow": {
+      "locked": false,
+      "released": false,
+      "mockTx": null
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 15000,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-04T21:51:14.591Z"
+  },
+  {
+    "id": "INV-H6VQO5",
+    "source": "user",
+    "ownerUserId": "USR-WTRPS7TH",
+    "amount": 15000,
+    "currency": "USDC",
+    "buyer": "Dodo Buyer",
+    "seller": "Dodo Seller",
+    "status": "Pending",
+    "upfront_percentage": 50,
+    "upfront_paid": false,
+    "remaining_paid": false,
+    "paid_amount": 0,
+    "funded_at": null,
+    "completed_at": null,
+    "risk": {
+      "risk_score": 29,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. 15,000 USDC is within the low-risk range for this buyer history.",
+      "analyzed_amount": 15000
+    },
+    "escrow": {
+      "locked": false,
+      "released": false,
+      "mockTx": null
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 15000,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-04T21:50:05.464Z"
+  },
+  {
+    "id": "INV-PQ2KLD",
+    "source": "user",
+    "ownerUserId": "USR-FOEAOLH8",
+    "amount": 15000,
+    "currency": "USDC",
+    "buyer": "Dodo Buyer",
+    "seller": "Dodo Seller",
+    "status": "Pending",
+    "upfront_percentage": 50,
+    "upfront_paid": false,
+    "remaining_paid": false,
+    "paid_amount": 0,
+    "funded_at": null,
+    "completed_at": null,
+    "risk": {
+      "risk_score": 29,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. 15,000 USDC is within the low-risk range for this buyer history.",
+      "analyzed_amount": 15000
+    },
+    "escrow": {
+      "locked": false,
+      "released": false,
+      "mockTx": null
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 15000,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-04T21:49:28.507Z"
+  },
+  {
+    "id": "INV-EMZL6W",
+    "source": "user",
+    "ownerUserId": "USR-Q6-XL4TR",
+    "amount": 211,
+    "currency": "USDC",
+    "buyer": "Northstar Retail",
+    "seller": "Atlas Components",
+    "status": "Pending",
+    "upfront_percentage": 50,
+    "upfront_paid": false,
+    "remaining_paid": false,
+    "paid_amount": 0,
+    "funded_at": null,
+    "completed_at": null,
+    "risk": {
+      "risk_score": 22,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. 211 USDC is within the low-risk range for this buyer history.",
+      "analyzed_amount": 211
+    },
+    "escrow": {
+      "locked": false,
+      "released": false,
+      "mockTx": null
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "processing",
+      "sessionId": "cks_0Ne8PAlSw0Tj0r7xUeyxT",
+      "checkoutUrl": "https://dodo.pe/q24f7urcy6",
+      "paymentId": null,
+      "mode": "test_mode",
+      "message": null,
+      "createdAt": "2026-05-04T21:41:44.090Z",
+      "updatedAt": "2026-05-05T11:48:03.595Z"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 211,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-04T21:41:40.556Z"
+  },
+  {
+    "id": "INV-GVNMLY",
+    "source": "user",
+    "ownerUserId": "USR-6RGXDZCI",
+    "amount": 1000,
+    "currency": "USDC",
+    "buyer": "Buyer Ltd",
+    "seller": "Seller Ltd",
+    "status": "Completed",
+    "upfront_percentage": 40,
+    "upfront_paid": true,
+    "remaining_paid": true,
+    "paid_amount": 1000,
+    "funded_at": "2026-05-04T20:20:40.691Z",
+    "completed_at": "2026-05-04T20:20:42.725Z",
+    "risk": {
+      "risk_score": 27,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Buyer history and invoice amount are within normal range."
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "partial_remaining_INV-GVNMLY"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 1000,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-04T20:20:40.672Z"
+  },
+  {
+    "id": "INV-H7SAGZ",
+    "source": "user",
+    "ownerUserId": "USR-HGABJCHS",
+    "amount": 1000,
+    "currency": "USDC",
+    "buyer": "Buyer Ltd",
+    "seller": "Seller Ltd",
+    "status": "Completed",
+    "upfront_percentage": 40,
+    "upfront_paid": true,
+    "remaining_paid": true,
+    "paid_amount": 1000,
+    "funded_at": "2026-05-04T20:12:16.109Z",
+    "completed_at": "2026-05-04T20:12:18.257Z",
+    "risk": {
+      "risk_score": 27,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Buyer history and invoice amount are within normal range."
+    },
+    "escrow": {
+      "locked": false,
+      "released": true,
+      "mockTx": "partial_remaining_INV-H7SAGZ"
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 1000,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-04T20:12:16.090Z"
+  },
+  {
+    "id": "INV-H9SZ6N",
+    "source": "user",
+    "ownerUserId": "USR-HYU4CZNA",
+    "amount": 12,
+    "buyer": "Private Buyer",
+    "seller": "Private Seller",
+    "status": "Pending",
+    "risk": {
+      "risk_score": 27,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Buyer history and invoice amount are within normal range."
+    },
+    "escrow": {
+      "locked": false,
+      "released": false,
+      "mockTx": null
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 12,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-04T19:50:40.949Z"
+  },
+  {
+    "id": "INV-YCXAFL",
+    "source": "user",
+    "ownerUserId": "USR-E39UHURZ",
+    "amount": 12,
+    "buyer": "Private Buyer",
+    "seller": "Private Seller",
+    "status": "Pending",
+    "risk": {
+      "risk_score": 27,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Buyer history and invoice amount are within normal range."
+    },
+    "escrow": {
+      "locked": false,
+      "released": false,
+      "mockTx": null
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 12,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-04T19:49:43.515Z"
+  },
+  {
+    "id": "INV-YHVDEY",
+    "source": "user",
+    "amount": 3241,
+    "buyer": "Northstar Retail",
+    "seller": "Atlas Components",
+    "status": "Pending",
+    "risk": {
+      "risk_score": 28,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Buyer history and invoice amount are within normal range."
+    },
+    "escrow": {
+      "locked": false,
+      "released": false,
+      "mockTx": null
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 3241,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-04T19:32:40.865Z"
+  },
+  {
+    "id": "INV-WJ7DQO",
+    "source": "user",
+    "amount": 15000,
+    "buyer": "Northstar Retail",
+    "seller": "Atlas Components",
+    "status": "Pending",
+    "risk": {
+      "risk_score": 32,
+      "risk_level": "Low",
+      "recommendation": "Approve escrow funding. Buyer history and invoice amount are within normal range."
+    },
+    "escrow": {
+      "locked": false,
+      "released": false,
+      "mockTx": null
+    },
+    "payment": {
+      "provider": "dodo",
+      "status": "not_started",
+      "sessionId": null,
+      "checkoutUrl": null,
+      "paymentId": null,
+      "mode": "unconfigured"
+    },
+    "stablecoin": {
+      "chain": "solana-devnet",
+      "token": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "status": "not_started",
+      "amount": 15000,
+      "escrowTx": null,
+      "releaseTx": null,
+      "mode": "real_spl"
+    },
+    "createdAt": "2026-05-04T19:32:29.079Z"
+  }
+]
