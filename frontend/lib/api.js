@@ -1,4 +1,4 @@
-import { getStoredSession } from "./authSession";
+import { clearSession, getStoredSession } from "./authSession";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -25,6 +25,9 @@ async function request(path, options = {}) {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: "Request failed" }));
+    if (response.status === 401 || error.error?.toLowerCase().includes("session expired")) {
+      clearSession();
+    }
     throw new Error(error.error || "Request failed");
   }
 

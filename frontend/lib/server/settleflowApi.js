@@ -101,6 +101,45 @@ function publicUser(user) {
   };
 }
 
+function base64UrlEncode(value) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function base64UrlDecode(value) {
+  return JSON.parse(Buffer.from(value, "base64url").toString("utf-8"));
+}
+
+function authSecret() {
+  return process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "settleflow-vercel-test-secret";
+}
+
+function signSessionToken(user) {
+  const payload = {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    company: user.company || "",
+    createdAt: user.createdAt,
+    iat: Date.now()
+  };
+  const encoded = base64UrlEncode(payload);
+  const signature = crypto.createHmac("sha256", authSecret()).update(encoded).digest("base64url");
+  return `sf_${encoded}.${signature}`;
+}
+
+function verifySessionToken(token) {
+  if (!token?.startsWith("sf_")) return null;
+
+  const [encoded, signature] = token.slice(3).split(".");
+  if (!encoded || !signature) return null;
+
+  const expected = crypto.createHmac("sha256", authSecret()).update(encoded).digest("base64url");
+  const valid = crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  if (!valid) return null;
+
+  return base64UrlDecode(encoded);
+}
+
 async function readInvoices() {
   return readJson(INVOICES_FILE, []);
 }
@@ -414,6 +453,12 @@ async function requireAuth(headers) {
   const header = headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   if (!token) throw new ApiError("Login required before making transactions.", 401);
+
+  const signedUser = verifySessionToken(token);
+  if (signedUser?.id) {
+    return signedUser;
+  }
+
   const users = await readUsers();
   const user = users.find((item) => item.sessionTokens?.includes(token));
   if (!user) throw new ApiError("Session expired. Please log in again.", 401);
@@ -452,10 +497,10 @@ export async function handleSettleFlowApi(request, segments = []) {
     const users = await readUsers();
     const normalizedEmail = email.toLowerCase().trim();
     if (users.some((user) => user.email === normalizedEmail)) throw new ApiError("An account with this email already exists", 409);
-    const user = { id: `USR-${nanoid(8).toUpperCase()}`, name, email: normalizedEmail, company, passwordHash: hashPassword(password), sessionTokens: [`demo_${crypto.randomBytes(24).toString("hex")}`], createdAt: new Date().toISOString() };
+    const user = { id: `USR-${nanoid(8).toUpperCase()}`, name, email: normalizedEmail, company, passwordHash: hashPassword(password), sessionTokens: [], createdAt: new Date().toISOString() };
     users.unshift(user);
     await writeUsers(users);
-    return { user: publicUser(user), token: user.sessionTokens[0] };
+    return { user: publicUser(user), token: signSessionToken(user) };
   }
 
   if (method === "POST" && route === "/auth/login") {
@@ -463,10 +508,7 @@ export async function handleSettleFlowApi(request, segments = []) {
     const users = await readUsers();
     const user = users.find((item) => item.email === email?.toLowerCase().trim());
     if (!user || !verifyPassword(password, user.passwordHash)) throw new ApiError("Invalid email or password", 401);
-    const token = `demo_${crypto.randomBytes(24).toString("hex")}`;
-    user.sessionTokens = [...(user.sessionTokens || []), token].slice(-5);
-    await writeUsers(users);
-    return { user: publicUser(user), token };
+    return { user: publicUser(user), token: signSessionToken(user) };
   }
 
   if (method === "POST" && route === "/auth/forgot-password") {
