@@ -21,10 +21,22 @@ export function getStoredSession() {
 }
 
 export function saveSession(result) {
+  const previousSession = getStoredSession();
   const session = {
     ...result.user,
     token: result.token
   };
+  const previousKey = legacyInvoiceCacheKey(previousSession);
+  const nextKey = invoiceCacheKey(session);
+
+  if (previousKey && nextKey && previousKey !== nextKey) {
+    const previousInvoices = window.localStorage.getItem(previousKey);
+    const nextInvoices = window.localStorage.getItem(nextKey);
+
+    if (previousInvoices && !nextInvoices) {
+      window.localStorage.setItem(nextKey, previousInvoices);
+    }
+  }
 
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   window.dispatchEvent(new CustomEvent(AUTH_CHANGED_EVENT, { detail: session }));
@@ -37,6 +49,11 @@ export function clearSession() {
 }
 
 function invoiceCacheKey(session = getStoredSession()) {
+  const accountKey = session?.email || session?.id;
+  return accountKey ? `${INVOICE_CACHE_PREFIX}${String(accountKey).toLowerCase()}` : "";
+}
+
+function legacyInvoiceCacheKey(session) {
   return session?.id ? `${INVOICE_CACHE_PREFIX}${session.id}` : "";
 }
 

@@ -1,5 +1,14 @@
 [
   {
+    "id": "USR-BF1C28CC6D",
+    "name": "Duplicate Test",
+    "email": "dupe-1778013747752@settleflow.test",
+    "company": "SettleFlow",
+    "passwordHash": "120000:e0233c16ef07ad8ccefa8bdefdce7d08:73894fa71f40952310c8f5e446473caf4c2cd798064fa3b951a2a45bdd8dbb2d4987db7fc6b9acae947b49481278a6c3ba75a41366df32e9d8d798ac9c59bae3",
+    "sessionTokens": [],
+    "createdAt": "2026-05-05T20:42:30.016Z"
+  },
+  {
     "id": "USR-UKHDDFLR",
     "name": "Deploy Test",
     "email": "deploy-1778011487282@settleflow.test",

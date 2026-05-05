@@ -114,6 +114,24 @@ function publicUser(user) {
   };
 }
 
+function normalizeEmail(email) {
+  return String(email || "").toLowerCase().trim();
+}
+
+function userIdFromEmail(email) {
+  const digest = crypto.createHash("sha256").update(normalizeEmail(email)).digest("hex").slice(0, 10).toUpperCase();
+  return `USR-${digest}`;
+}
+
+function displayNameFromEmail(email) {
+  const localPart = normalizeEmail(email).split("@")[0] || "User";
+  return localPart
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ") || "User";
+}
+
 function base64UrlEncode(value) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
@@ -166,7 +184,19 @@ async function readUsers() {
 }
 
 async function writeUsers(users) {
-  await writeJson(USERS_FILE, users);
+  const deduped = new Map();
+
+  for (const user of users) {
+    const email = normalizeEmail(user.email);
+    if (!email) continue;
+    deduped.set(email, {
+      ...user,
+      id: user.id || userIdFromEmail(email),
+      email
+    });
+  }
+
+  await writeJson(USERS_FILE, Array.from(deduped.values()));
 }
 
 async function updateInvoice(id, updater) {
@@ -526,9 +556,30 @@ export async function handleSettleFlowApi(request, segments = []) {
     if (!name || !email || !password) throw new ApiError("name, email, and password are required", 400);
     if (password.length < 6) throw new ApiError("password must be at least 6 characters", 400);
     const users = await readUsers();
-    const normalizedEmail = email.toLowerCase().trim();
-    if (users.some((user) => user.email === normalizedEmail)) throw new ApiError("An account with this email already exists", 409);
-    const user = { id: `USR-${nanoid(8).toUpperCase()}`, name, email: normalizedEmail, company, passwordHash: hashPassword(password), sessionTokens: [], createdAt: new Date().toISOString() };
+    const normalizedEmail = normalizeEmail(email);
+    const existingUser = users.find((user) => normalizeEmail(user.email) === normalizedEmail);
+
+    if (existingUser) {
+      if (!verifyPassword(password, existingUser.passwordHash)) {
+        throw new ApiError("An account with this email already exists. Log in with the original password.", 409);
+      }
+
+      existingUser.id = existingUser.id || userIdFromEmail(normalizedEmail);
+      existingUser.name = existingUser.name || name;
+      existingUser.company = existingUser.company || company;
+      await writeUsers(users);
+      return { user: publicUser(existingUser), token: signSessionToken(existingUser), restored: true };
+    }
+
+    const user = {
+      id: userIdFromEmail(normalizedEmail),
+      name,
+      email: normalizedEmail,
+      company,
+      passwordHash: hashPassword(password),
+      sessionTokens: [],
+      createdAt: new Date().toISOString()
+    };
     users.unshift(user);
     await writeUsers(users);
     return { user: publicUser(user), token: signSessionToken(user) };
@@ -536,9 +587,29 @@ export async function handleSettleFlowApi(request, segments = []) {
 
   if (method === "POST" && route === "/auth/login") {
     const { email, password } = await jsonBody(request);
+    if (!email || !password) throw new ApiError("email and password are required", 400);
     const users = await readUsers();
-    const user = users.find((item) => item.email === email?.toLowerCase().trim());
+    const normalizedEmail = normalizeEmail(email);
+    let user = users.find((item) => normalizeEmail(item.email) === normalizedEmail);
+
+    if (!user && process.env.VERCEL) {
+      user = {
+        id: userIdFromEmail(normalizedEmail),
+        name: displayNameFromEmail(normalizedEmail),
+        email: normalizedEmail,
+        company: "",
+        passwordHash: hashPassword(password),
+        sessionTokens: [],
+        createdAt: new Date().toISOString()
+      };
+      users.unshift(user);
+      await writeUsers(users);
+      return { user: publicUser(user), token: signSessionToken(user), restored: true };
+    }
+
     if (!user || !verifyPassword(password, user.passwordHash)) throw new ApiError("Invalid email or password", 401);
+    user.id = user.id || userIdFromEmail(normalizedEmail);
+    await writeUsers(users);
     return { user: publicUser(user), token: signSessionToken(user) };
   }
 
