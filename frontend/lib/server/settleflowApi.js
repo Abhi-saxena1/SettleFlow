@@ -429,9 +429,27 @@ async function releaseStablecoinTransfer({ sellerWallet, amount }) {
   const connection = new Connection(config.rpcUrl, "confirmed");
   const mint = new PublicKey(config.mint);
   const seller = new PublicKey(sellerWallet);
+  const escrowSolBalance = await connection.getBalance(signer.publicKey);
+
+  if (escrowSolBalance < 5000) {
+    throw new ApiError(
+      `Escrow wallet needs devnet SOL for release fees. Send a small amount of devnet SOL to ${signer.publicKey.toBase58()}, then try Release USDC again.`,
+      400
+    );
+  }
+
   const sourceAta = await getAssociatedTokenAddress(mint, signer.publicKey);
   const destinationAta = await getAssociatedTokenAddress(mint, seller);
-  const sourceBalance = await connection.getTokenAccountBalance(sourceAta);
+  let sourceBalance;
+
+  try {
+    sourceBalance = await connection.getTokenAccountBalance(sourceAta);
+  } catch {
+    throw new ApiError(
+      `Escrow USDC token account does not exist yet for ${signer.publicKey.toBase58()}. Lock USDC into escrow before releasing funds.`,
+      400
+    );
+  }
   if (Number(sourceBalance.value.uiAmountString || 0) < Number(amount)) throw new ApiError(`Escrow token account has ${sourceBalance.value.uiAmountString} USDC, but this invoice requires ${amount} USDC.`, 400);
 
   const transaction = new Transaction();
