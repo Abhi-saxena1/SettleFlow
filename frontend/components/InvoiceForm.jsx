@@ -80,7 +80,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
           />
         </label>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4">
           <label className="grid gap-2 text-sm font-bold text-black/55">
             Buyer email
             <input

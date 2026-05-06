@@ -535,6 +535,7 @@ async function sendResetCodeEmail({ email, code, name }) {
 async function sendSettleFlowEmail({ to, subject, preview, actionUrl, actionLabel = "View invoice" }) {
   const recipients = [...new Set((Array.isArray(to) ? to : [to]).map((email) => normalizeEmail(email)).filter(Boolean))];
   if (!recipients.length || !process.env.RESEND_API_KEY) {
+    console.warn("SettleFlow email skipped:", !recipients.length ? "no recipients" : "RESEND_API_KEY missing");
     return { sent: false };
   }
 
@@ -573,7 +574,12 @@ async function notifyInvoiceEvent(invoice, event, requestUrl) {
   const origin = requestUrl ? new URL(requestUrl).origin : process.env.NEXT_PUBLIC_APP_URL || "";
   const actionUrl = origin ? `${origin}/dashboard/invoice/${invoice.id}` : "";
   const amount = `${Number(invoice.amount || 0).toLocaleString()} ${invoice.currency || "USDC"}`;
-  const recipients = [invoice.buyer_email, invoice.seller_email];
+  let ownerEmail = invoice.owner_email;
+  if (!ownerEmail && invoice.ownerUserId) {
+    const users = await readUsers().catch(() => []);
+    ownerEmail = users.find((user) => user.id === invoice.ownerUserId)?.email || "";
+  }
+  const recipients = [ownerEmail, invoice.buyer_email, invoice.seller_email];
   const subjects = {
     created: `SettleFlow invoice ${invoice.id} created`,
     locked: `SettleFlow invoice ${invoice.id} escrow funded`,
@@ -585,12 +591,13 @@ async function notifyInvoiceEvent(invoice, event, requestUrl) {
     completed: `${invoice.id} has been completed and settled.`
   };
 
-  await sendSettleFlowEmail({
+  const result = await sendSettleFlowEmail({
     to: recipients,
     subject: subjects[event],
     preview: previews[event],
     actionUrl
   });
+  console.log("SettleFlow email notification", { invoiceId: invoice.id, event, sent: result.sent, recipients: recipients.filter(Boolean).length });
 }
 
 async function updateInvoice(id, updater) {
@@ -681,6 +688,7 @@ function withPaymentPlan(invoice) {
     seller: invoice.seller || "Unknown seller",
     buyer_email: invoice.buyer_email || "",
     seller_email: invoice.seller_email || "",
+    owner_email: invoice.owner_email || "",
     payment_method: invoice.payment_method || "usdc",
     risk: invoice.risk || {
       risk_score: 0,
@@ -1273,6 +1281,7 @@ export async function handleSettleFlowApi(request, segments = []) {
       id: `INV-${nanoid(6).toUpperCase()}`,
       source: "user",
       ownerUserId: user.id,
+      owner_email: normalizeEmail(user.email),
       amount: Number(amount),
       currency: "USDC",
       buyer,

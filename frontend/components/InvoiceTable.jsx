@@ -35,7 +35,7 @@ const stablecoinStyles = {
 
 function StatusPill({ children, className }) {
   return (
-    <span className={`inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full px-4 py-2 text-xs font-black leading-none ${className}`}>
+    <span className={`inline-flex min-h-8 items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-black leading-none ${className}`}>
       {children}
     </span>
   );
@@ -54,7 +54,7 @@ function PaymentBreakdown({ invoice }) {
   const progress = Number(invoice.payment_progress || 0);
 
   return (
-    <div className="grid gap-2 text-xs font-semibold text-black/55">
+    <div className="grid gap-1.5 text-xs font-semibold text-black/55">
       <div className="h-2 overflow-hidden rounded-full bg-black/10">
         <div className="h-full rounded-full bg-leaf transition-all" style={{ width: `${progress}%` }} />
       </div>
@@ -130,7 +130,7 @@ function InvoiceActions({
 
   if (invoice.status === "Completed") {
     return (
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-bold text-black/40">Settled</span>
         <button
           onClick={() => onDelete(invoice.id)}
@@ -148,7 +148,7 @@ function InvoiceActions({
     const stablecoinLocked = invoice.stablecoin?.status === "escrow_locked";
 
     return stablecoinLocked ? (
-      <button onClick={() => onReleaseStablecoin(invoice.id)} className="button-primary h-11 gap-2 px-5 py-0 leading-none" disabled={actionBusy}>
+      <button onClick={() => onReleaseStablecoin(invoice.id)} className="button-primary h-10 gap-2 px-4 py-0 leading-none" disabled={actionBusy}>
         {actionBusy ? <Loader2 className="animate-spin" size={16} /> : "Release USDC"}
       </button>
     ) : (
@@ -161,11 +161,11 @@ function InvoiceActions({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-wrap items-center gap-2">
       {paymentMethod === "dodo" && (!invoice.payment?.checkoutUrl ? (
         <button
           onClick={() => onDodoCheckout(invoice.id)}
-          className="button-primary h-11 gap-2 px-5 py-0 leading-none"
+          className="button-primary h-10 gap-2 px-4 py-0 leading-none"
           disabled={actionBusy}
           title="Create a real Dodo Payments checkout session"
         >
@@ -174,7 +174,7 @@ function InvoiceActions({
         </button>
       ) : (
         <>
-          <a href={invoice.payment.checkoutUrl} target="_blank" rel="noreferrer" className="button-secondary h-11 gap-2 px-5 py-0 leading-none">
+          <a href={invoice.payment.checkoutUrl} target="_blank" rel="noreferrer" className="button-secondary h-10 gap-2 px-4 py-0 leading-none">
             <ExternalLink size={16} />
             Open
           </a>
@@ -191,7 +191,7 @@ function InvoiceActions({
       {paymentMethod === "usdc" && !invoice.upfront_paid && (
         <button
           onClick={() => onFundStablecoin(invoice, "upfront")}
-          className="button-primary h-11 gap-2 px-5 py-0 leading-none"
+          className="button-primary h-10 gap-2 px-4 py-0 leading-none"
           disabled={actionBusy}
           title="Transfer the upfront USDC amount from your wallet to escrow"
         >
@@ -201,7 +201,7 @@ function InvoiceActions({
       {paymentMethod === "usdc" && invoice.upfront_paid && !invoice.remaining_paid && (
         <button
           onClick={() => onFundStablecoin(invoice, "remaining")}
-          className="button-primary h-11 gap-2 px-5 py-0 leading-none"
+          className="button-primary h-10 gap-2 px-4 py-0 leading-none"
           disabled={actionBusy}
           title="Transfer the remaining USDC balance from your wallet to escrow"
         >
@@ -209,14 +209,14 @@ function InvoiceActions({
         </button>
       )}
       {paymentMethod === "dodo" && (
-        <span className="rounded-full bg-mint px-4 py-3 text-xs font-black text-black/50">Card rail selected</span>
+        <span className="rounded-full bg-mint px-3 py-2 text-xs font-black text-black/50">Card rail selected</span>
       )}
       {paymentMethod === "usdc" && (
-        <span className="rounded-full bg-mint px-4 py-3 text-xs font-black text-black/50">USDC escrow selected</span>
+        <span className="rounded-full bg-mint px-3 py-2 text-xs font-black text-black/50">USDC escrow selected</span>
       )}
       <button
         onClick={() => onDelete(invoice.id)}
-        className="inline-flex h-11 items-center gap-1 rounded-full px-2 text-xs font-bold text-red-600 underline"
+        className="inline-flex h-10 items-center gap-1 rounded-full px-2 text-xs font-bold text-red-600 underline"
         disabled={actionBusy}
       >
         <Trash2 size={13} />
@@ -241,25 +241,22 @@ function InvoiceCard({
   const showStablecoinStatus = stablecoinStatus !== "not_started";
 
   return (
-    <article className="rounded-xl border border-black/10 bg-white p-5 shadow-md">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <article className="rounded-xl border border-black/10 bg-white p-4 shadow-md">
+      <div className="grid gap-4 xl:grid-cols-[minmax(8rem,0.8fr)_minmax(8rem,0.75fr)_minmax(8rem,0.75fr)_minmax(13rem,1.15fr)] xl:items-start">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.16em] text-black/35">Invoice</p>
           <Link href={`/dashboard/invoice/${invoice.id}`} className="mt-1 block text-lg font-black text-ink hover:text-leaf">
             {invoice.id}
           </Link>
+          <p className="mt-2 text-lg font-black text-ink">{formatAmount(invoice.amount, invoice.currency || "USDC")}</p>
         </div>
-        <p className="text-xl font-black text-ink">{formatAmount(invoice.amount, invoice.currency || "USDC")}</p>
-      </div>
-
-      <div className="mt-5 grid gap-4 text-sm sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1.15fr]">
         <div>
           <p className="font-bold text-black/40">Buyer</p>
-          <p className="mt-1 font-semibold text-black/70">{invoice.buyer}</p>
+          <p className="mt-1 text-sm font-semibold text-black/70">{invoice.buyer}</p>
         </div>
         <div>
           <p className="font-bold text-black/40">Seller</p>
-          <p className="mt-1 font-semibold text-black/70">{invoice.seller}</p>
+          <p className="mt-1 text-sm font-semibold text-black/70">{invoice.seller}</p>
         </div>
         <div>
           <p className="font-bold text-black/40">Split</p>
@@ -269,7 +266,7 @@ function InvoiceCard({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <StatusPill className={statusStyles[invoice.status] || statusStyles.Pending}>{invoice.status}</StatusPill>
         <StatusPill className="bg-mint text-ink">
           {(invoice.payment_method || "usdc") === "dodo" ? "Dodo card" : "USDC escrow"}
@@ -290,8 +287,8 @@ function InvoiceCard({
       </div>
       <StablecoinDetails invoice={invoice} />
 
-      <div className="mt-5 border-t border-black/5 pt-4">
-        <Link href={`/dashboard/invoice/${invoice.id}`} className="button-secondary mb-3 h-11 gap-2 px-5 py-0 leading-none">
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-black/5 pt-3">
+        <Link href={`/dashboard/invoice/${invoice.id}`} className="button-secondary h-10 gap-2 px-4 py-0 leading-none">
           View details
         </Link>
         <InvoiceActions
