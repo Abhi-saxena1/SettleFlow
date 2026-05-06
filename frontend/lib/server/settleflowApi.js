@@ -732,7 +732,7 @@ function normalizeDodoStatus(status) {
 }
 
 function isDodoPaid(status) {
-  return ["succeeded", "paid", "completed", "complete", "captured", "confirmed", "success"].includes(
+  return ["succeeded", "payment_succeeded", "payment.succeeded", "paid", "completed", "complete", "captured", "confirmed", "success"].includes(
     normalizeDodoStatus(status)
   );
 }
@@ -765,8 +765,12 @@ function extractDodoWebhookData(payload) {
       nestedPayment.invoiceId,
     paymentStatus:
       data.payment_status ||
+      data.paymentStatus ||
       data.status ||
+      data.event_type ||
+      data.event ||
       nestedPayment.payment_status ||
+      nestedPayment.paymentStatus ||
       nestedPayment.status ||
       payload.type?.replace("payment.", ""),
     paymentId: data.payment_id || data.id || nestedPayment.payment_id || nestedPayment.id || null
@@ -889,7 +893,7 @@ async function createDodoCheckoutSession(invoice, requestUrl) {
     allowed_payment_method_types: ["credit", "debit"],
     billing_address: { country: process.env.DODO_PAYMENTS_BILLING_COUNTRY || "US" },
     billing_currency: process.env.DODO_PAYMENTS_CURRENCY || "USD",
-    return_url: `${origin}/dashboard?invoice_id=${invoice.id}`,
+    return_url: `${origin}/dashboard?invoice_id=${invoice.id}&dodo_return=success`,
     cancel_url: `${origin}/dashboard?invoice_id=${invoice.id}&status=cancelled`,
     short_link: true,
     metadata: { invoice_id: invoice.id, invoice_amount: String(invoice.amount), buyer: invoice.buyer, seller: invoice.seller },
@@ -1410,7 +1414,7 @@ export async function handleSettleFlowApi(request, segments = []) {
         }
       };
     });
-    await notifyInvoiceEvent(updated, remainingPaid || stage === "full" ? "locked" : "locked", request.url).catch((error) => console.warn("USDC lock email skipped:", error.message));
+    await notifyInvoiceEvent(updated, "locked", request.url).catch((error) => console.warn("USDC lock email skipped:", error.message));
     return withPaymentPlan(updated);
   }
 

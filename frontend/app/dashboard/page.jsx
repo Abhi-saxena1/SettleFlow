@@ -133,7 +133,15 @@ export default function DashboardPage() {
 
   async function refreshInvoicesAfterPayment() {
     const cachedInvoices = getCachedInvoices(session);
-    const serverInvoices = await getInvoices().catch(() => []);
+    let serverInvoices = [];
+    let serverReadFailed = false;
+
+    try {
+      serverInvoices = await getInvoices();
+    } catch {
+      serverReadFailed = true;
+    }
+
     let data = mergeInvoiceLists(cachedInvoices, serverInvoices);
 
     if (data.length > 0) {
@@ -141,16 +149,29 @@ export default function DashboardPage() {
       data = mergeInvoiceLists(data, restoredInvoices);
     }
 
+    if (data.length === 0 && invoices.length > 0 && serverReadFailed) {
+      return invoices;
+    }
+
+    if (data.length === 0 && invoices.length > 0 && loading) {
+      return invoices;
+    }
+
     applyInvoiceList(data);
     return data;
   }
 
-  async function syncDodoPaymentWithRetry(invoiceId, attempts = 5) {
+  async function syncDodoPaymentWithRetry(invoiceId, attempts = 8) {
     let lastError = null;
 
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
         const updated = await syncDodoPayment(invoiceId);
+        setInvoices((current) => {
+          const next = mergeInvoiceLists(current, [updated]);
+          saveCachedInvoices(next, session);
+          return next;
+        });
         const paymentStatus = String(updated.payment?.status || "").toLowerCase();
 
         if (updated.status === "Completed" || ["succeeded", "paid", "completed", "captured"].includes(paymentStatus)) {
@@ -164,7 +185,7 @@ export default function DashboardPage() {
         lastError = err;
       }
 
-      await new Promise((resolve) => window.setTimeout(resolve, 1200 + attempt * 700));
+      await new Promise((resolve) => window.setTimeout(resolve, 1400 + attempt * 900));
     }
 
     throw lastError || new Error("Dodo payment sync did not complete yet.");
@@ -188,6 +209,12 @@ export default function DashboardPage() {
   useEffect(() => {
     const storedSession = getStoredSession();
     setSession(storedSession);
+    if (storedSession?.token) {
+      const cachedInvoices = getCachedInvoices(storedSession);
+      if (cachedInvoices.length > 0) {
+        setInvoices(cachedInvoices);
+      }
+    }
     setSessionReady(true);
 
     function handleAuthChanged(event) {
@@ -238,10 +265,11 @@ export default function DashboardPage() {
         const updated = await syncDodoPaymentWithRetry(invoiceId);
         if (cancelled) return;
 
-        await refreshInvoicesAfterPayment();
+        const refreshed = await refreshInvoicesAfterPayment();
+        const refreshedInvoice = refreshed.find((invoice) => invoice.id === invoiceId) || updated;
 
         if (!cancelled) {
-          setNotice(`${updated.id} Dodo payment synced: ${updated.payment?.status || updated.status}.`);
+          setNotice(`${refreshedInvoice.id} Dodo payment synced: ${refreshedInvoice.payment?.status || refreshedInvoice.status}.`);
         }
 
         window.history.replaceState({}, "", window.location.pathname + window.location.hash);
