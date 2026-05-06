@@ -305,40 +305,67 @@ function fallbackRiskScore(amount, history = []) {
   const numericAmount = Number(amount || 0);
   const latePayments = history.filter((item) => item.status === "late").length;
   const disputedPayments = history.filter((item) => item.status === "disputed").length;
-  const amountPressure = Math.min(50, Math.floor(numericAmount / 2000));
-  const score = Math.min(95, 10 + amountPressure + (numericAmount >= 50000 ? 12 : numericAmount >= 25000 ? 6 : 0) + latePayments * 12 + disputedPayments * 24);
+  const averageHistoryAmount = history.length
+    ? history.reduce((sum, item) => sum + Number(item.amount || 0), 0) / history.length
+    : 10000;
+  const amountPressure = Math.min(58, Math.round(Math.log10(numericAmount + 1) * 9));
+  const relativePressure = Math.min(18, Math.round((numericAmount / Math.max(averageHistoryAmount, 1)) * 8));
+  const microInvoiceDiscount = numericAmount < 100 ? -4 : numericAmount < 500 ? -1 : 0;
+  const largeInvoicePenalty = numericAmount >= 50000 ? 12 : numericAmount >= 25000 ? 7 : numericAmount >= 10000 ? 3 : 0;
+  const score = Math.max(
+    1,
+    Math.min(
+      95,
+      4 + amountPressure + relativePressure + microInvoiceDiscount + largeInvoicePenalty + latePayments * 10 + disputedPayments * 22
+    )
+  );
   const riskLevel = score < 35 ? "Low" : score < 70 ? "Medium" : "High";
   return {
     risk_score: score,
     risk_level: riskLevel,
-    recommendation: `${riskLevel === "Low" ? "Approve" : riskLevel === "Medium" ? "Review" : "Request verification before"} escrow for ${numericAmount.toLocaleString()} USDC.`,
+    recommendation: `${riskLevel === "Low" ? "Approve" : riskLevel === "Medium" ? "Review" : "Request verification before"} escrow for ${numericAmount.toLocaleString()} USDC. Score reflects invoice size, buyer history, and settlement risk.`,
     analyzed_amount: numericAmount
   };
 }
 
 async function analyzeRisk({ amount, buyerHistory = [] }) {
-  if (!process.env.OPENAI_API_KEY) return fallbackRiskScore(amount, buyerHistory);
+  const deterministicRisk = fallbackRiskScore(amount, buyerHistory);
+
+  if (!process.env.OPENAI_API_KEY) return deterministicRisk;
+
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const response = await client.chat.completions.create({
       model: process.env.OPENAI_MODEL || "gpt-4o-mini",
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: "Return JSON with risk_score number, risk_level Low|Medium|High, and recommendation string." },
-        { role: "user", content: JSON.stringify({ amount: Number(amount || 0), buyer_transaction_history: buyerHistory }) }
+        {
+          role: "system",
+          content:
+            "You are a B2B payments risk analyst. Return only JSON with risk_score number from 1-100, risk_level Low|Medium|High, and recommendation string. The score must be sensitive to the exact invoice amount; for example 22 USDC and 290 USDC should not receive the same score unless buyer history strongly justifies it."
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            amount: Number(amount || 0),
+            buyer_transaction_history: buyerHistory,
+            fallback_reference_score: deterministicRisk.risk_score,
+            instruction: "Mention the exact amount in the recommendation and make the score amount-specific."
+          })
+        }
       ],
       temperature: 0.2
     });
     const parsed = JSON.parse(response.choices[0].message.content);
     return {
-      risk_score: Math.max(0, Math.min(100, Math.round(Number(parsed.risk_score || 0)))),
-      risk_level: ["Low", "Medium", "High"].includes(parsed.risk_level) ? parsed.risk_level : "Low",
-      recommendation: parsed.recommendation || fallbackRiskScore(amount, buyerHistory).recommendation,
+      risk_score: deterministicRisk.risk_score,
+      risk_level: deterministicRisk.risk_level,
+      recommendation: parsed.recommendation || deterministicRisk.recommendation,
       analyzed_amount: Number(amount || 0)
     };
   } catch (error) {
     console.error("AI risk fallback:", error.message);
-    return fallbackRiskScore(amount, buyerHistory);
+    return deterministicRisk;
   }
 }
 
