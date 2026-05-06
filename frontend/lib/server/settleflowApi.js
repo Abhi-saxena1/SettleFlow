@@ -1058,8 +1058,12 @@ export async function handleSettleFlowApi(request, segments = []) {
     const normalizedEmail = normalizeEmail(email);
     const user = await findUserByEmail(normalizedEmail);
 
+    if (!user) {
+      throw new ApiError("No account found with this email. Please create an account first.", 404);
+    }
+
     const passwordMatches = user ? verifyPassword(password, user.passwordHash) : false;
-    if (!user || !passwordMatches) throw new ApiError("Invalid email or password", 401);
+    if (!passwordMatches) throw new ApiError("Incorrect password. Please try again or use forgot password.", 401);
     user.id = user.id || userIdFromEmail(normalizedEmail);
     if (user.passwordHash === password) {
       user.passwordHash = hashPassword(password);
