@@ -48,6 +48,66 @@ export default function DashboardPage() {
 
   const isAuthenticated = Boolean(session?.token);
 
+  function invoiceTimestamp(invoice) {
+    return Math.max(
+      new Date(invoice.payment?.updatedAt || 0).getTime(),
+      new Date(invoice.completed_at || 0).getTime(),
+      new Date(invoice.funded_at || 0).getTime(),
+      new Date(invoice.createdAt || 0).getTime(),
+      0
+    );
+  }
+
+  function invoiceStateRank(invoice) {
+    const paymentStatus = String(invoice.payment?.status || "").toLowerCase();
+
+    if (invoice.status === "Completed" || ["succeeded", "paid", "completed", "captured"].includes(paymentStatus)) {
+      return 5;
+    }
+
+    if (invoice.status === "Funded") return 4;
+    if (invoice.status === "Partially Funded") return 3;
+    if (paymentStatus === "checkout_created") return 2;
+    return 1;
+  }
+
+  function mergeInvoiceLists(...lists) {
+    const byId = new Map();
+
+    for (const invoice of lists.flat()) {
+      if (!invoice?.id) continue;
+      const existing = byId.get(invoice.id);
+
+      if (!existing) {
+        byId.set(invoice.id, invoice);
+        continue;
+      }
+
+      const invoiceRank = invoiceStateRank(invoice);
+      const existingRank = invoiceStateRank(existing);
+      const invoiceIsBetter = invoiceRank > existingRank ||
+        (invoiceRank === existingRank && invoiceTimestamp(invoice) >= invoiceTimestamp(existing));
+      const newer = invoiceIsBetter ? invoice : existing;
+      const older = invoiceIsBetter ? existing : invoice;
+
+      byId.set(invoice.id, {
+        ...older,
+        ...newer,
+        payment: {
+          ...(older.payment || {}),
+          ...(newer.payment || {})
+        },
+        stablecoin: {
+          ...(older.stablecoin || {}),
+          ...(newer.stablecoin || {})
+        },
+        risk: newer.risk || older.risk
+      });
+    }
+
+    return Array.from(byId.values()).sort((a, b) => invoiceTimestamp(b) - invoiceTimestamp(a));
+  }
+
   function buildDashboardAnalytics(invoiceList) {
     const completedInvoices = invoiceList.filter((invoice) => invoice.status === "Completed");
     const totalSettled = completedInvoices.reduce((sum, invoice) => sum + Number(invoice.amount || 0), 0);
@@ -76,15 +136,42 @@ export default function DashboardPage() {
   }
 
   async function refreshInvoicesAfterPayment() {
-    let data = await getInvoices();
     const cachedInvoices = getCachedInvoices(session);
+    const serverInvoices = await getInvoices().catch(() => []);
+    let data = mergeInvoiceLists(cachedInvoices, serverInvoices);
 
-    if (data.length === 0 && cachedInvoices.length > 0) {
-      data = await importInvoices(cachedInvoices);
+    if (data.length > 0) {
+      const restoredInvoices = await importInvoices(data).catch(() => []);
+      data = mergeInvoiceLists(data, restoredInvoices);
     }
 
     applyInvoiceList(data);
     return data;
+  }
+
+  async function syncDodoPaymentWithRetry(invoiceId, attempts = 5) {
+    let lastError = null;
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const updated = await syncDodoPayment(invoiceId);
+        const paymentStatus = String(updated.payment?.status || "").toLowerCase();
+
+        if (updated.status === "Completed" || ["succeeded", "paid", "completed", "captured"].includes(paymentStatus)) {
+          return updated;
+        }
+
+        if (attempt === attempts - 1) {
+          return updated;
+        }
+      } catch (err) {
+        lastError = err;
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 1200 + attempt * 700));
+    }
+
+    throw lastError || new Error("Dodo payment sync did not complete yet.");
   }
 
   async function loadInvoices() {
@@ -154,7 +241,7 @@ export default function DashboardPage() {
       setError("");
 
       try {
-        const updated = await syncDodoPayment(invoiceId);
+        const updated = await syncDodoPaymentWithRetry(invoiceId);
         if (cancelled) return;
 
         await refreshInvoicesAfterPayment();
@@ -162,12 +249,6 @@ export default function DashboardPage() {
         if (!cancelled) {
           setNotice(`${updated.id} Dodo payment synced: ${updated.payment?.status || updated.status}.`);
         }
-
-        window.setTimeout(async () => {
-          if (!cancelled) {
-            await refreshInvoicesAfterPayment().catch(() => null);
-          }
-        }, 1800);
 
         window.history.replaceState({}, "", window.location.pathname + window.location.hash);
       } catch (err) {
@@ -282,16 +363,12 @@ export default function DashboardPage() {
     setNotice("");
     try {
       const result = await createDodoCheckout(id);
-      setInvoices((current) => {
-        const next = current.map((invoice) => (invoice.id === id ? result.invoice : invoice));
-        saveCachedInvoices(next, session);
-        setAnalytics(buildDashboardAnalytics(next));
-        return next;
-      });
+      const next = mergeInvoiceLists(invoices, [result.invoice]);
+      applyInvoiceList(next);
       setNotice(`Dodo checkout created for ${Number(result.checkout?.intendedAmount || 0).toLocaleString()} USDC.`);
 
       if (result.checkout?.checkoutUrl) {
-        window.open(result.checkout.checkoutUrl, "_blank", "noopener,noreferrer");
+        window.location.assign(result.checkout.checkoutUrl);
       }
     } catch (err) {
       if (err.message.toLowerCase().includes("invoice not found")) {
