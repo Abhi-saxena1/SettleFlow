@@ -311,6 +311,42 @@ function isDodoPaid(status) {
   );
 }
 
+function dodoWebhookStrict() {
+  return process.env.DODO_WEBHOOK_STRICT === "true";
+}
+
+function parseJsonSafely(rawBody) {
+  try {
+    return JSON.parse(rawBody || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function extractDodoWebhookData(payload) {
+  const data = payload.data || payload;
+  const nestedPayment = data.payment || data.payload || {};
+  const metadata = data.metadata || nestedPayment.metadata || {};
+
+  return {
+    data,
+    invoiceId:
+      metadata.invoice_id ||
+      metadata.invoiceId ||
+      data.invoice_id ||
+      data.invoiceId ||
+      nestedPayment.invoice_id ||
+      nestedPayment.invoiceId,
+    paymentStatus:
+      data.payment_status ||
+      data.status ||
+      nestedPayment.payment_status ||
+      nestedPayment.status ||
+      payload.type?.replace("payment.", ""),
+    paymentId: data.payment_id || data.id || nestedPayment.payment_id || nestedPayment.id || null
+  };
+}
+
 function applyDodoPaymentStatus(invoice, paymentStatus, data = {}) {
   const paid = isDodoPaid(paymentStatus);
   const now = new Date().toISOString();
@@ -327,7 +363,7 @@ function applyDodoPaymentStatus(invoice, paymentStatus, data = {}) {
       ...(invoice.payment || {}),
       provider: "dodo",
       status: paymentStatus || "webhook_received",
-      paymentId: data.payment_id || data.id || data.payment?.id || invoice.payment?.paymentId || null,
+      paymentId: data.payment_id || data.id || data.paymentId || data.payment?.id || invoice.payment?.paymentId || null,
       updatedAt: now
     }
   };
@@ -678,23 +714,41 @@ export async function handleSettleFlowApi(request, segments = []) {
     const rawBody = await request.text();
     const client = getDodoClient();
     const webhookKey = process.env.DODO_WEBHOOK_KEY || process.env.DODO_PAYMENTS_WEBHOOK_KEY;
-    const payload = client && webhookKey
-      ? client.webhooks.unwrap(rawBody, {
-        headers: {
-          "webhook-id": request.headers.get("webhook-id"),
-          "webhook-signature": request.headers.get("webhook-signature"),
-          "webhook-timestamp": request.headers.get("webhook-timestamp")
+    let payload = parseJsonSafely(rawBody);
+    let verified = false;
+
+    if (client && webhookKey) {
+      try {
+        payload = client.webhooks.unwrap(rawBody, {
+          headers: {
+            "webhook-id": request.headers.get("webhook-id"),
+            "webhook-signature": request.headers.get("webhook-signature"),
+            "webhook-timestamp": request.headers.get("webhook-timestamp")
+          }
+        });
+        verified = true;
+      } catch (error) {
+        console.warn("Dodo webhook signature verification failed:", error.message);
+
+        if (dodoWebhookStrict()) {
+          throw new ApiError("Invalid Dodo webhook signature", 401);
         }
-      })
-      : JSON.parse(rawBody || "{}");
-    const data = payload.data || payload;
-    const metadata = data.metadata || data.payment?.metadata || {};
-    const invoiceId = metadata.invoice_id || data.invoice_id;
-    const paymentStatus = data.payment_status || data.status || data.payment?.status;
-    console.log("Dodo webhook event", { type: payload.type || payload.event_type || payload.event, invoiceId, paymentStatus });
-    if (invoiceId) {
-      await updateInvoice(invoiceId, (invoice) => applyDodoPaymentStatus(invoice, paymentStatus, data));
+      }
     }
+
+    const { data, invoiceId, paymentStatus, paymentId } = extractDodoWebhookData(payload);
+    console.log("Dodo webhook event", {
+      type: payload.type || payload.event_type || payload.event,
+      invoiceId,
+      paymentStatus,
+      paymentId,
+      verified
+    });
+
+    if (invoiceId) {
+      await updateInvoice(invoiceId, (invoice) => applyDodoPaymentStatus(invoice, paymentStatus, { ...data, paymentId }));
+    }
+
     return { received: true };
   }
 

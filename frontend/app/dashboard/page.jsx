@@ -75,18 +75,23 @@ export default function DashboardPage() {
     saveCachedInvoices(nextInvoices, session);
   }
 
+  async function refreshInvoicesAfterPayment() {
+    let data = await getInvoices();
+    const cachedInvoices = getCachedInvoices(session);
+
+    if (data.length === 0 && cachedInvoices.length > 0) {
+      data = await importInvoices(cachedInvoices);
+    }
+
+    applyInvoiceList(data);
+    return data;
+  }
+
   async function loadInvoices() {
     setError("");
     setLoading(true);
     try {
-      let data = await getInvoices();
-      const cachedInvoices = getCachedInvoices(session);
-
-      if (data.length === 0 && cachedInvoices.length > 0) {
-        data = await importInvoices(cachedInvoices);
-      }
-
-      applyInvoiceList(data);
+      await refreshInvoicesAfterPayment();
     } catch (err) {
       setError(err.message);
       if (err.message.toLowerCase().includes("login")) {
@@ -152,16 +157,18 @@ export default function DashboardPage() {
         const updated = await syncDodoPayment(invoiceId);
         if (cancelled) return;
 
-        setInvoices((current) => {
-          const exists = current.some((invoice) => invoice.id === invoiceId);
-          const next = exists
-            ? current.map((invoice) => (invoice.id === invoiceId ? updated : invoice))
-            : [updated, ...current];
-          setAnalytics(buildDashboardAnalytics(next));
-          saveCachedInvoices(next, session);
-          return next;
-        });
-        setNotice(`${updated.id} Dodo payment synced: ${updated.payment?.status || updated.status}.`);
+        await refreshInvoicesAfterPayment();
+
+        if (!cancelled) {
+          setNotice(`${updated.id} Dodo payment synced: ${updated.payment?.status || updated.status}.`);
+        }
+
+        window.setTimeout(async () => {
+          if (!cancelled) {
+            await refreshInvoicesAfterPayment().catch(() => null);
+          }
+        }, 1800);
+
         window.history.replaceState({}, "", window.location.pathname + window.location.hash);
       } catch (err) {
         if (!cancelled) {
