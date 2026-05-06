@@ -189,6 +189,45 @@ function fromInvoiceRecord(record) {
   };
 }
 
+function publicInvoice(invoice) {
+  const safeInvoice = withPaymentPlan(invoice);
+  return {
+    id: safeInvoice.id,
+    amount: safeInvoice.amount,
+    currency: safeInvoice.currency,
+    buyer: safeInvoice.buyer,
+    seller: safeInvoice.seller,
+    status: safeInvoice.status,
+    payment_method: safeInvoice.payment_method,
+    upfront_percentage: safeInvoice.upfront_percentage,
+    upfront_amount: safeInvoice.upfront_amount,
+    remaining_amount: safeInvoice.remaining_amount,
+    paid_amount: safeInvoice.paid_amount,
+    payment_progress: safeInvoice.payment_progress,
+    upfront_paid: safeInvoice.upfront_paid,
+    remaining_paid: safeInvoice.remaining_paid,
+    funded_at: safeInvoice.funded_at,
+    completed_at: safeInvoice.completed_at,
+    createdAt: safeInvoice.createdAt,
+    risk: safeInvoice.risk,
+    payment: {
+      provider: safeInvoice.payment?.provider || "dodo",
+      status: safeInvoice.payment?.status || "not_started",
+      updatedAt: safeInvoice.payment?.updatedAt || null,
+      createdAt: safeInvoice.payment?.createdAt || null
+    },
+    stablecoin: {
+      chain: safeInvoice.stablecoin?.chain,
+      token: safeInvoice.stablecoin?.token,
+      status: safeInvoice.stablecoin?.status || "not_started",
+      escrowTx: safeInvoice.stablecoin?.escrowTx || null,
+      escrowExplorerUrl: safeInvoice.stablecoin?.escrowExplorerUrl || null,
+      releaseTx: safeInvoice.stablecoin?.releaseTx || null,
+      releaseExplorerUrl: safeInvoice.stablecoin?.releaseExplorerUrl || null
+    }
+  };
+}
+
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto.pbkdf2Sync(password, salt, ITERATIONS, KEY_LENGTH, DIGEST).toString("hex");
@@ -1079,6 +1118,13 @@ export async function handleSettleFlowApi(request, segments = []) {
     return { configured: Boolean(config.mint && config.escrowWallet), ...config };
   }
 
+  if (method === "GET" && segments[0] === "invoice" && segments[1] === "track" && segments[2]) {
+    const invoices = await readInvoices();
+    const invoice = invoices.find((item) => item.tracking_token === segments[2]);
+    if (!invoice) throw new ApiError("Invoice tracking link not found", 404);
+    return publicInvoice(invoice);
+  }
+
   if (method === "POST" && route === "/ai/risk") {
     const body = await jsonBody(request);
     const amount = Number(body.amount);
@@ -1279,6 +1325,7 @@ export async function handleSettleFlowApi(request, segments = []) {
     const config = stablecoinConfig();
     const invoice = {
       id: `INV-${nanoid(6).toUpperCase()}`,
+      tracking_token: nanoid(24),
       source: "user",
       ownerUserId: user.id,
       owner_email: normalizeEmail(user.email),
@@ -1340,6 +1387,20 @@ export async function handleSettleFlowApi(request, segments = []) {
     const checkout = await createDodoCheckoutSession(invoice, request.url);
     const updated = await updateInvoice(id, (current) => ({ ...current, payment: { ...(current.payment || {}), ...checkout, createdAt: new Date().toISOString() } }));
     return { invoice: withPaymentPlan(updated), checkout };
+  }
+
+  if (method === "POST" && route === "/invoice/share") {
+    const { id } = await jsonBody(request);
+    const invoices = await readInvoices();
+    const invoice = getOwnedInvoice(invoices, id, user.id);
+    if (!invoice) throw new ApiError("Invoice not found", 404);
+    const token = invoice.tracking_token || nanoid(24);
+    const updated = await updateInvoice(id, (current) => ({ ...current, tracking_token: current.tracking_token || token }));
+    const origin = new URL(request.url).origin;
+    return {
+      invoice: withPaymentPlan(updated),
+      trackingUrl: `${origin}/track/${updated.tracking_token}`
+    };
   }
 
   if (method === "POST" && route === "/invoice/payment/sync") {

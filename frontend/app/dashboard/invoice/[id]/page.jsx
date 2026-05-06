@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Circle, Download, ExternalLink, Loader2, Printer, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Circle, Copy, ExternalLink, Loader2, Printer, RefreshCw, Share2, Trash2 } from "lucide-react";
 import AuthModal from "../../../../components/AuthModal";
 import Navbar from "../../../../components/Navbar";
-import { createDodoCheckout, deleteInvoice, getInvoice, syncDodoPayment } from "../../../../lib/api";
+import { createDodoCheckout, createInvoiceShareLink, deleteInvoice, getInvoice, syncDodoPayment } from "../../../../lib/api";
 import { AUTH_CHANGED_EVENT, getStoredSession, saveSession } from "../../../../lib/authSession";
 
 const statusStyles = {
@@ -160,8 +160,10 @@ export default function InvoiceDetailPage() {
   const [authMode, setAuthMode] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [shareBusy, setShareBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [trackingUrl, setTrackingUrl] = useState("");
 
   const timeline = useMemo(() => (invoice ? buildTimeline(invoice) : []), [invoice]);
   const progress = Number(invoice?.payment_progress || 0);
@@ -262,30 +264,28 @@ export default function InvoiceDetailPage() {
     setError("");
   }
 
-  function exportInvoiceJson() {
-    const payload = {
-      id: invoice.id,
-      amount: invoice.amount,
-      currency: invoice.currency,
-      buyer: invoice.buyer,
-      seller: invoice.seller,
-      status: invoice.status,
-      payment_method: invoice.payment_method,
-      upfront_amount: invoice.upfront_amount,
-      remaining_amount: invoice.remaining_amount,
-      risk: invoice.risk,
-      createdAt: invoice.createdAt,
-      completed_at: invoice.completed_at,
-      payment: invoice.payment,
-      stablecoin: invoice.stablecoin
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${invoice.id}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+  async function copyTrackingLink() {
+    setShareBusy(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const result = await createInvoiceShareLink(invoice.id);
+      setInvoice(result.invoice || invoice);
+      setTrackingUrl(result.trackingUrl);
+
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(result.trackingUrl);
+        setNotice("Live tracking link copied. You can share it with the seller.");
+      } else {
+        window.prompt("Copy live tracking link", result.trackingUrl);
+        setNotice("Live tracking link generated.");
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setShareBusy(false);
+    }
   }
 
   return (
@@ -400,9 +400,9 @@ export default function InvoiceDetailPage() {
                   <Printer size={16} />
                   Print / Save PDF
                 </button>
-                <button onClick={exportInvoiceJson} className="button-secondary gap-2">
-                  <Download size={16} />
-                  Export JSON
+                <button onClick={copyTrackingLink} disabled={shareBusy} className="button-secondary gap-2">
+                  {shareBusy ? <Loader2 className="animate-spin" size={16} /> : trackingUrl ? <Copy size={16} /> : <Share2 size={16} />}
+                  {trackingUrl ? "Copy tracking link" : "Share live tracking"}
                 </button>
                 <button onClick={removeInvoice} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-red-100 bg-red-50 px-5 py-3 text-sm font-black text-red-700">
                   <Trash2 size={16} />

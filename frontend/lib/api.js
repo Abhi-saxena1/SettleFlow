@@ -42,6 +42,10 @@ export function getInvoice(id) {
   return request(`/invoice/${id}`);
 }
 
+export function getTrackedInvoice(token) {
+  return request(`/invoice/track/${token}`);
+}
+
 export function importInvoices(invoices) {
   return request("/invoice/import", {
     method: "POST",
@@ -96,6 +100,13 @@ export function payRemaining(id) {
 
 export function createDodoCheckout(id) {
   return request("/invoice/checkout", {
+    method: "POST",
+    body: JSON.stringify({ id })
+  });
+}
+
+export function createInvoiceShareLink(id) {
+  return request("/invoice/share", {
     method: "POST",
     body: JSON.stringify({ id })
   });
