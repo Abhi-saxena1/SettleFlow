@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { Connection, PublicKey, Transaction } from "@solana/web3.js";
@@ -40,11 +40,6 @@ export default function DashboardPage() {
   const [session, setSession] = useState(null);
   const [sessionReady, setSessionReady] = useState(false);
   const [authMode, setAuthMode] = useState(null);
-  const [analytics, setAnalytics] = useState({
-    totalSettled: 0,
-    avgSettlementTimeHours: 0,
-    totalInvoices: 0
-  });
 
   const isAuthenticated = Boolean(session?.token);
 
@@ -131,9 +126,10 @@ export default function DashboardPage() {
 
   function applyInvoiceList(nextInvoices) {
     setInvoices(nextInvoices);
-    setAnalytics(buildDashboardAnalytics(nextInvoices));
     saveCachedInvoices(nextInvoices, session);
   }
+
+  const analytics = useMemo(() => buildDashboardAnalytics(invoices), [invoices]);
 
   async function refreshInvoicesAfterPayment() {
     const cachedInvoices = getCachedInvoices(session);
@@ -183,7 +179,6 @@ export default function DashboardPage() {
       setError(err.message);
       if (err.message.toLowerCase().includes("login")) {
         setInvoices([]);
-        setAnalytics({ totalSettled: 0, avgSettlementTimeHours: 0, totalInvoices: 0 });
       }
     } finally {
       setLoading(false);
@@ -220,7 +215,6 @@ export default function DashboardPage() {
     }
 
     setInvoices([]);
-    setAnalytics({ totalSettled: 0, avgSettlementTimeHours: 0, totalInvoices: 0 });
     setLoading(false);
   }, [sessionReady, session?.token]);
 
@@ -253,7 +247,8 @@ export default function DashboardPage() {
         window.history.replaceState({}, "", window.location.pathname + window.location.hash);
       } catch (err) {
         if (!cancelled) {
-          setError(`Dodo payment sync pending: ${err.message}`);
+          await refreshInvoicesAfterPayment().catch(() => null);
+          setNotice("Dodo payment sync is still pending. The dashboard list was refreshed.");
         }
       } finally {
         if (!cancelled) {
@@ -302,20 +297,18 @@ export default function DashboardPage() {
       setInvoices((current) => {
         const next = current.map((invoice) => (invoice.id === id ? updated : invoice));
         saveCachedInvoices(next, session);
-        setAnalytics(buildDashboardAnalytics(next));
         return next;
       });
       setNotice(`${updated.id} updated to ${updated.status}.`);
     } catch (err) {
-      setError(err.message);
       if (err.message.toLowerCase().includes("invoice not found")) {
-        setInvoices((current) => {
-          const next = current.filter((invoice) => invoice.id !== id);
-          saveCachedInvoices(next, session);
-          setAnalytics(buildDashboardAnalytics(next));
-          return next;
-        });
+        await refreshInvoicesAfterPayment().catch(() => null);
+        setError("");
+        setNotice("The server invoice cache was refreshed. Try the action again if needed.");
+        return;
       }
+
+      setError(err.message);
     } finally {
       setBusyId(null);
     }
@@ -339,7 +332,6 @@ export default function DashboardPage() {
       setInvoices((current) => {
         const next = current.filter((invoice) => invoice.id !== id);
         saveCachedInvoices(next, session);
-        setAnalytics(buildDashboardAnalytics(next));
         return next;
       });
       setNotice("Invoice deleted.");
@@ -372,8 +364,9 @@ export default function DashboardPage() {
       }
     } catch (err) {
       if (err.message.toLowerCase().includes("invoice not found")) {
-        setInvoices((current) => current.filter((invoice) => invoice.id !== id));
-        setError("That invoice no longer exists, so I removed the stale row from your dashboard.");
+        await importInvoices(invoices).catch(() => null);
+        setError("");
+        setNotice("The invoice list was restored. Click Pay with Dodo again.");
         return;
       }
 
@@ -496,7 +489,6 @@ export default function DashboardPage() {
       setInvoices((current) => {
         const next = current.map((item) => (item.id === invoice.id ? updated : item));
         saveCachedInvoices(next, session);
-        setAnalytics(buildDashboardAnalytics(next));
         return next;
       });
       setNotice(`${stageAmount.toLocaleString()} USDC locked in escrow. Tx: ${signature.slice(0, 8)}...`);
@@ -609,7 +601,6 @@ export default function DashboardPage() {
               setInvoices((current) => {
                 const next = [invoice, ...current];
                 saveCachedInvoices(next, session);
-                setAnalytics(buildDashboardAnalytics(next));
                 return next;
               });
             }}
