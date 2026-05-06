@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { KeyRound, Loader2, LogIn, UserPlus, X } from "lucide-react";
-import { forgotPassword, logIn, resetPassword, signUp } from "../lib/api";
+import { clearTestAuthData, forgotPassword, logIn, resetPassword, signUp } from "../lib/api";
+import { clearSettleFlowStorage } from "../lib/authSession";
 
 const initialForm = {
   name: "",
@@ -46,7 +47,7 @@ export default function AuthModal({ mode, onClose, onSuccess }) {
     try {
       if (isForgot) {
         const result = await forgotPassword({ email: form.email });
-        setNotice(`${result.message}${result.resetCode ? ` Reset code: ${result.resetCode}` : ""}`);
+        setNotice(result.message);
         setActiveMode("reset");
         return;
       }
@@ -74,6 +75,25 @@ export default function AuthModal({ mode, onClose, onSuccess }) {
     }
   }
 
+  async function resetTestAuth() {
+    setLoading(true);
+    setError("");
+    setNotice("");
+
+    try {
+      await clearTestAuthData();
+      clearSettleFlowStorage();
+      setForm(initialForm);
+      setActiveMode("signup");
+      setNotice("Test login data cleared. Create a fresh account now.");
+    } catch (err) {
+      clearSettleFlowStorage();
+      setError(`${err.message} Browser login cache was still cleared.`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-[100] grid place-items-start overflow-y-auto bg-black/45 px-4 py-6 backdrop-blur-sm sm:place-items-center sm:py-8">
       <div className="my-auto w-full max-w-md overflow-hidden rounded-[1.5rem] border border-black/10 bg-white shadow-glow">
@@ -93,16 +113,29 @@ export default function AuthModal({ mode, onClose, onSuccess }) {
 
         <div className="grid grid-cols-2 gap-2 p-3">
           <button
+            type="button"
             onClick={() => setActiveMode("login")}
             className={`rounded-full px-4 py-2 text-sm font-black ${activeMode === "login" ? "bg-ink text-white" : "bg-sage text-ink"}`}
           >
             Login
           </button>
           <button
+            type="button"
             onClick={() => setActiveMode("signup")}
             className={`rounded-full px-4 py-2 text-sm font-black ${isSignup ? "bg-ink text-white" : "bg-sage text-ink"}`}
           >
             Sign Up
+          </button>
+        </div>
+
+        <div className="px-6 pb-3">
+          <button
+            type="button"
+            onClick={resetTestAuth}
+            disabled={loading}
+            className="w-full rounded-full border border-red-200 bg-red-50 px-4 py-3 text-sm font-black text-red-700 transition hover:-translate-y-0.5 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Reset test login data
           </button>
         </div>
 
@@ -175,7 +208,7 @@ export default function AuthModal({ mode, onClose, onSuccess }) {
             <button
               type="button"
               onClick={() => setActiveMode("forgot")}
-              className="justify-self-start text-sm font-bold text-leaf underline"
+              className="justify-self-start rounded-full bg-sage px-4 py-2 text-sm font-black text-leaf underline transition hover:-translate-y-0.5"
             >
               Forgot password?
             </button>

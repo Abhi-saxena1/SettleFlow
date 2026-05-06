@@ -48,6 +48,20 @@ export function clearSession() {
   window.dispatchEvent(new CustomEvent(AUTH_CHANGED_EVENT, { detail: null }));
 }
 
+export function clearSettleFlowStorage() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  for (const key of Object.keys(window.localStorage)) {
+    if (key === STORAGE_KEY || key.startsWith(INVOICE_CACHE_PREFIX)) {
+      window.localStorage.removeItem(key);
+    }
+  }
+
+  window.dispatchEvent(new CustomEvent(AUTH_CHANGED_EVENT, { detail: null }));
+}
+
 function invoiceCacheKey(session = getStoredSession()) {
   const accountKey = session?.email || session?.id;
   return accountKey ? `${INVOICE_CACHE_PREFIX}${String(accountKey).toLowerCase()}` : "";

@@ -5,6 +5,7 @@ import path from "path";
 import DodoPayments from "dodopayments";
 import { nanoid } from "nanoid";
 import OpenAI from "openai";
+import { createClient } from "@supabase/supabase-js";
 import { Connection, Keypair, PublicKey, sendAndConfirmTransaction, Transaction } from "@solana/web3.js";
 import {
   createAssociatedTokenAccountInstruction,
@@ -23,6 +24,8 @@ const memoryStore = globalThis.__settleflowMemoryStore || {
   [USERS_FILE]: null
 };
 globalThis.__settleflowMemoryStore = memoryStore;
+const supabaseGlobal = globalThis.__settleflowSupabase || { client: null };
+globalThis.__settleflowSupabase = supabaseGlobal;
 
 const mockBuyerHistory = [
   { id: "TX-901", amount: 9200, status: "paid", settledInHours: 4 },
@@ -91,6 +94,76 @@ async function writeJson(file, data) {
   await fs.writeFile(file, JSON.stringify(data, null, 2));
 }
 
+function supabaseClient() {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return null;
+  }
+
+  if (!supabaseGlobal.client) {
+    supabaseGlobal.client = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false
+        }
+      }
+    );
+  }
+
+  return supabaseGlobal.client;
+}
+
+function supabaseEnabled() {
+  return Boolean(supabaseClient());
+}
+
+function toUserRecord(user) {
+  return {
+    id: user.id,
+    email: normalizeEmail(user.email),
+    name: user.name,
+    company: user.company || "",
+    password_hash: user.passwordHash,
+    reset_code: user.resetCode || null,
+    reset_code_expires_at: user.resetCodeExpiresAt || null,
+    created_at: user.createdAt || new Date().toISOString()
+  };
+}
+
+function fromUserRecord(record) {
+  return {
+    id: record.id,
+    email: record.email,
+    name: record.name,
+    company: record.company || "",
+    passwordHash: record.password_hash,
+    resetCode: record.reset_code || undefined,
+    resetCodeExpiresAt: record.reset_code_expires_at || undefined,
+    sessionTokens: [],
+    createdAt: record.created_at
+  };
+}
+
+function toInvoiceRecord(invoice) {
+  return {
+    id: invoice.id,
+    owner_user_id: invoice.ownerUserId,
+    data: invoice,
+    created_at: invoice.createdAt || new Date().toISOString()
+  };
+}
+
+function fromInvoiceRecord(record) {
+  return {
+    ...(record.data || {}),
+    id: record.id,
+    ownerUserId: record.owner_user_id,
+    createdAt: record.data?.createdAt || record.created_at
+  };
+}
+
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto.pbkdf2Sync(password, salt, ITERATIONS, KEY_LENGTH, DIGEST).toString("hex");
@@ -98,10 +171,18 @@ function hashPassword(password) {
 }
 
 function verifyPassword(password, storedPassword = "") {
-  const [iterations, salt, storedHash] = storedPassword.split(":");
-  if (!iterations || !salt || !storedHash) return false;
+  const [iterations, salt, storedHash] = String(storedPassword || "").split(":");
+  if (!iterations || !salt || !storedHash) {
+    return storedPassword === password;
+  }
+  if (!Number.isFinite(Number(iterations))) {
+    return false;
+  }
+
   const hash = crypto.pbkdf2Sync(password, salt, Number(iterations), KEY_LENGTH, DIGEST).toString("hex");
-  return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(storedHash, "hex"));
+  const hashBuffer = Buffer.from(hash, "hex");
+  const storedBuffer = Buffer.from(storedHash, "hex");
+  return hashBuffer.length === storedBuffer.length && crypto.timingSafeEqual(hashBuffer, storedBuffer);
 }
 
 function publicUser(user) {
@@ -172,14 +253,60 @@ function verifySessionToken(token) {
 }
 
 async function readInvoices() {
+  const supabase = supabaseClient();
+
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("settleflow_invoices")
+      .select("*")
+      .order("updated_at", { ascending: false });
+
+    if (error) {
+      console.error("Supabase readInvoices failed, using JSON fallback:", error.message);
+    } else {
+      return data.map(fromInvoiceRecord);
+    }
+  }
+
   return readJson(INVOICES_FILE, []);
 }
 
 async function writeInvoices(invoices) {
+  const supabase = supabaseClient();
+
+  if (supabase) {
+    const records = invoices.filter((invoice) => invoice?.id && invoice?.ownerUserId).map(toInvoiceRecord);
+    const { error } = await supabase
+      .from("settleflow_invoices")
+      .upsert(records, { onConflict: "id" });
+
+    if (error) {
+      console.error("Supabase writeInvoices failed, using JSON fallback:", error.message);
+    } else {
+      memoryStore[INVOICES_FILE] = invoices;
+      return;
+    }
+  }
+
   await writeJson(INVOICES_FILE, invoices);
 }
 
 async function readUsers() {
+  const supabase = supabaseClient();
+
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("settleflow_users")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Supabase readUsers failed, using JSON fallback:", error.message);
+    } else {
+      return data.map(fromUserRecord);
+    }
+  }
+
   return readJson(USERS_FILE, []);
 }
 
@@ -196,10 +323,210 @@ async function writeUsers(users) {
     });
   }
 
-  await writeJson(USERS_FILE, Array.from(deduped.values()));
+  const normalizedUsers = Array.from(deduped.values());
+  const supabase = supabaseClient();
+
+  if (supabase) {
+    const { error } = await supabase
+      .from("settleflow_users")
+      .upsert(normalizedUsers.map(toUserRecord), { onConflict: "email" });
+
+    if (error) {
+      console.error("Supabase writeUsers failed, using JSON fallback:", error.message);
+    } else {
+      memoryStore[USERS_FILE] = normalizedUsers;
+      return;
+    }
+  }
+
+  await writeJson(USERS_FILE, normalizedUsers);
+}
+
+async function findUserByEmail(email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return null;
+
+  const supabase = supabaseClient();
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("settleflow_users")
+      .select("*")
+      .eq("email", normalizedEmail)
+      .maybeSingle();
+
+    if (error) {
+      throw new ApiError(`Unable to check account: ${error.message}`, 500);
+    }
+
+    return data ? fromUserRecord(data) : null;
+  }
+
+  const users = await readUsers();
+  return users.find((user) => normalizeEmail(user.email) === normalizedEmail) || null;
+}
+
+async function saveUser(user) {
+  const normalizedUser = {
+    ...user,
+    id: user.id || userIdFromEmail(user.email),
+    email: normalizeEmail(user.email)
+  };
+
+  const supabase = supabaseClient();
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("settleflow_users")
+      .upsert(toUserRecord(normalizedUser), { onConflict: "email" })
+      .select("*")
+      .single();
+
+    if (error) {
+      throw new ApiError(`Unable to save account: ${error.message}`, 500);
+    }
+
+    return fromUserRecord(data);
+  }
+
+  const users = await readUsers();
+  const nextUsers = users.filter((item) => normalizeEmail(item.email) !== normalizedUser.email);
+  nextUsers.unshift(normalizedUser);
+  await writeUsers(nextUsers);
+  return normalizedUser;
+}
+
+async function createUser(user) {
+  const normalizedUser = {
+    ...user,
+    id: user.id || userIdFromEmail(user.email),
+    email: normalizeEmail(user.email)
+  };
+
+  const supabase = supabaseClient();
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("settleflow_users")
+      .insert(toUserRecord(normalizedUser))
+      .select("*")
+      .single();
+
+    if (error?.code === "23505") {
+      throw new ApiError("An account with this email already exists. Please log in instead.", 409);
+    }
+
+    if (error) {
+      throw new ApiError(`Unable to create account: ${error.message}`, 500);
+    }
+
+    return fromUserRecord(data);
+  }
+
+  const existingUser = await findUserByEmail(normalizedUser.email);
+  if (existingUser) {
+    throw new ApiError("An account with this email already exists. Please log in instead.", 409);
+  }
+
+  const users = await readUsers();
+  users.unshift(normalizedUser);
+  await writeUsers(users);
+  return normalizedUser;
+}
+
+async function clearAllAuthData() {
+  const supabase = supabaseClient();
+
+  if (supabase) {
+    const { error: invoiceError } = await supabase
+      .from("settleflow_invoices")
+      .delete()
+      .neq("id", "__never__");
+
+    if (invoiceError) {
+      throw new ApiError(`Unable to clear invoices: ${invoiceError.message}`, 500);
+    }
+
+    const { error: userError } = await supabase
+      .from("settleflow_users")
+      .delete()
+      .neq("id", "__never__");
+
+    if (userError) {
+      throw new ApiError(`Unable to clear users: ${userError.message}`, 500);
+    }
+  }
+
+  memoryStore[USERS_FILE] = [];
+  memoryStore[INVOICES_FILE] = [];
+  await writeJson(USERS_FILE, []);
+  await writeJson(INVOICES_FILE, []);
+}
+
+async function sendResetCodeEmail({ email, code, name }) {
+  if (!process.env.RESEND_API_KEY) {
+    return { sent: false, reason: "RESEND_API_KEY is not configured" };
+  }
+
+  const from = process.env.RESET_EMAIL_FROM || "SettleFlow <onboarding@resend.dev>";
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from,
+      to: [email],
+      subject: "Your SettleFlow password reset code",
+      text: `Hi ${name || "there"},\n\nYour SettleFlow reset code is ${code}.\n\nThis code expires in 15 minutes. If you did not request it, you can ignore this email.`,
+      html: `
+        <div style="font-family:Arial,sans-serif;line-height:1.5;color:#06140d">
+          <h2>Your SettleFlow reset code</h2>
+          <p>Hi ${name || "there"},</p>
+          <p>Use this code to reset your password:</p>
+          <div style="display:inline-block;padding:14px 18px;border-radius:12px;background:#e9f8d8;font-size:28px;font-weight:800;letter-spacing:6px">${code}</div>
+          <p>This code expires in 15 minutes.</p>
+        </div>
+      `
+    })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new ApiError(data.message || "Unable to send reset email", 502);
+  }
+
+  return { sent: true };
 }
 
 async function updateInvoice(id, updater) {
+  const supabase = supabaseClient();
+
+  if (supabase) {
+    const { data: record, error: readError } = await supabase
+      .from("settleflow_invoices")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (readError) {
+      console.error("Supabase updateInvoice read failed, using JSON fallback:", readError.message);
+    } else if (record) {
+      const updatedInvoice = updater(fromInvoiceRecord(record));
+      const { data, error } = await supabase
+        .from("settleflow_invoices")
+        .upsert(toInvoiceRecord(updatedInvoice), { onConflict: "id" })
+        .select("*")
+        .single();
+
+      if (error) {
+        console.error("Supabase updateInvoice write failed, using JSON fallback:", error.message);
+      } else {
+        return fromInvoiceRecord(data);
+      }
+    } else {
+      return null;
+    }
+  }
+
   const invoices = await readInvoices();
   const index = invoices.findIndex((invoice) => invoice.id === id);
   if (index === -1) return null;
@@ -612,13 +939,15 @@ async function requireAuth(headers) {
 
   const signedUser = verifySessionToken(token);
   if (signedUser?.id) {
-    return signedUser;
+    const activeUser = await findUserByEmail(signedUser.email);
+    if (!activeUser || activeUser.id !== signedUser.id) {
+      throw new ApiError("Session expired. Please log in again.", 401);
+    }
+
+    return publicUser(activeUser);
   }
 
-  const users = await readUsers();
-  const user = users.find((item) => item.sessionTokens?.includes(token));
-  if (!user) throw new ApiError("Session expired. Please log in again.", 401);
-  return publicUser(user);
+  throw new ApiError("Session expired. Please log in again.", 401);
 }
 
 function getOwnedInvoice(invoices, id, userId) {
@@ -650,9 +979,8 @@ export async function handleSettleFlowApi(request, segments = []) {
     const { name, email, password, company = "" } = await jsonBody(request);
     if (!name || !email || !password) throw new ApiError("name, email, and password are required", 400);
     if (password.length < 6) throw new ApiError("password must be at least 6 characters", 400);
-    const users = await readUsers();
     const normalizedEmail = normalizeEmail(email);
-    const existingUser = users.find((user) => normalizeEmail(user.email) === normalizedEmail);
+    const existingUser = await findUserByEmail(normalizedEmail);
 
     if (existingUser) {
       throw new ApiError("An account with this email already exists. Please log in instead.", 409);
@@ -667,46 +995,70 @@ export async function handleSettleFlowApi(request, segments = []) {
       sessionTokens: [],
       createdAt: new Date().toISOString()
     };
-    users.unshift(user);
-    await writeUsers(users);
-    return { user: publicUser(user), token: signSessionToken(user) };
+    const savedUser = await createUser(user);
+    return { user: publicUser(savedUser), token: signSessionToken(savedUser) };
+  }
+
+  if (method === "POST" && route === "/auth/dev/clear") {
+    const { confirmation } = await jsonBody(request);
+    if (process.env.ALLOW_AUTH_CLEAR !== "true") {
+      throw new ApiError("Auth clearing is disabled. Set ALLOW_AUTH_CLEAR=true temporarily for testing.", 403);
+    }
+    if (confirmation !== "CLEAR_LOGIN_DATA") {
+      throw new ApiError("confirmation must be CLEAR_LOGIN_DATA", 400);
+    }
+
+    await clearAllAuthData();
+    return { cleared: true, message: "All SettleFlow test users and invoices were cleared." };
   }
 
   if (method === "POST" && route === "/auth/login") {
     const { email, password } = await jsonBody(request);
     if (!email || !password) throw new ApiError("email and password are required", 400);
-    const users = await readUsers();
     const normalizedEmail = normalizeEmail(email);
-    const user = users.find((item) => normalizeEmail(item.email) === normalizedEmail);
+    const user = await findUserByEmail(normalizedEmail);
 
-    if (!user || !verifyPassword(password, user.passwordHash)) throw new ApiError("Invalid email or password", 401);
+    const passwordMatches = user ? verifyPassword(password, user.passwordHash) : false;
+    if (!user || !passwordMatches) throw new ApiError("Invalid email or password", 401);
     user.id = user.id || userIdFromEmail(normalizedEmail);
-    await writeUsers(users);
-    return { user: publicUser(user), token: signSessionToken(user) };
+    if (user.passwordHash === password) {
+      user.passwordHash = hashPassword(password);
+    }
+    const savedUser = await saveUser(user);
+    return { user: publicUser(savedUser), token: signSessionToken(savedUser) };
   }
 
   if (method === "POST" && route === "/auth/forgot-password") {
     const { email } = await jsonBody(request);
-    const users = await readUsers();
-    const user = users.find((item) => item.email === email?.toLowerCase().trim());
+    const user = await findUserByEmail(email);
     if (!user) return { message: "If an account exists, a reset code was generated." };
     user.resetCode = String(crypto.randomInt(100000, 999999));
     user.resetCodeExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-    await writeUsers(users);
-    return { message: "Password reset code generated. In production this would be emailed.", resetCode: user.resetCode };
+    await saveUser(user);
+    const emailResult = await sendResetCodeEmail({
+      email: user.email,
+      code: user.resetCode,
+      name: user.name
+    });
+
+    return {
+      message: emailResult.sent
+        ? "Password reset code sent to your email."
+        : "Password reset code generated. Add RESEND_API_KEY to send it by email.",
+      resetCode: emailResult.sent ? undefined : user.resetCode
+    };
   }
 
   if (method === "POST" && route === "/auth/reset-password") {
     const { email, resetCode, password } = await jsonBody(request);
     if (!email || !resetCode || !password) throw new ApiError("email, reset code, and password are required", 400);
-    const users = await readUsers();
-    const user = users.find((item) => item.email === email.toLowerCase().trim());
+    const user = await findUserByEmail(email);
     if (!user || user.resetCode !== resetCode || new Date(user.resetCodeExpiresAt) < new Date()) throw new ApiError("Invalid or expired reset code", 400);
     user.passwordHash = hashPassword(password);
     user.sessionTokens = [];
     delete user.resetCode;
     delete user.resetCodeExpiresAt;
-    await writeUsers(users);
+    await saveUser(user);
     return { message: "Password reset. Please log in again." };
   }
 
@@ -825,7 +1177,23 @@ export async function handleSettleFlowApi(request, segments = []) {
     const invoices = await readInvoices();
     const invoice = getOwnedInvoice(invoices, segments[1], user.id);
     if (!invoice) throw new ApiError("Invoice not found", 404);
-    await writeInvoices(invoices.filter((item) => item.id !== segments[1]));
+
+    const supabase = supabaseClient();
+
+    if (supabase) {
+      const { error } = await supabase
+        .from("settleflow_invoices")
+        .delete()
+        .eq("id", segments[1])
+        .eq("owner_user_id", user.id);
+
+      if (error) {
+        throw new ApiError(`Unable to delete invoice: ${error.message}`, 500);
+      }
+    } else {
+      await writeInvoices(invoices.filter((item) => item.id !== segments[1]));
+    }
+
     return { deleted: true, id: segments[1] };
   }
 

@@ -156,3 +156,10 @@ export function resetPassword(payload) {
     body: JSON.stringify(payload)
   });
 }
+
+export function clearTestAuthData() {
+  return request("/auth/dev/clear", {
+    method: "POST",
+    body: JSON.stringify({ confirmation: "CLEAR_LOGIN_DATA" })
+  });
+}
