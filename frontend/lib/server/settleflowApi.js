@@ -532,6 +532,67 @@ async function sendResetCodeEmail({ email, code, name }) {
   return { sent: true };
 }
 
+async function sendSettleFlowEmail({ to, subject, preview, actionUrl, actionLabel = "View invoice" }) {
+  const recipients = [...new Set((Array.isArray(to) ? to : [to]).map((email) => normalizeEmail(email)).filter(Boolean))];
+  if (!recipients.length || !process.env.RESEND_API_KEY) {
+    return { sent: false };
+  }
+
+  const from = process.env.RESET_EMAIL_FROM || "SettleFlow <onboarding@resend.dev>";
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from,
+      to: recipients,
+      subject,
+      text: `${preview}${actionUrl ? `\n\n${actionLabel}: ${actionUrl}` : ""}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;line-height:1.5;color:#06140d">
+          <h2>${subject}</h2>
+          <p>${preview}</p>
+          ${actionUrl ? `<p><a href="${actionUrl}" style="display:inline-block;padding:12px 16px;border-radius:999px;background:#06140d;color:white;text-decoration:none;font-weight:700">${actionLabel}</a></p>` : ""}
+        </div>
+      `
+    })
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    console.warn("SettleFlow email skipped:", data.message || response.statusText);
+    return { sent: false };
+  }
+
+  return { sent: true };
+}
+
+async function notifyInvoiceEvent(invoice, event, requestUrl) {
+  const origin = requestUrl ? new URL(requestUrl).origin : process.env.NEXT_PUBLIC_APP_URL || "";
+  const actionUrl = origin ? `${origin}/dashboard/invoice/${invoice.id}` : "";
+  const amount = `${Number(invoice.amount || 0).toLocaleString()} ${invoice.currency || "USDC"}`;
+  const recipients = [invoice.buyer_email, invoice.seller_email];
+  const subjects = {
+    created: `SettleFlow invoice ${invoice.id} created`,
+    locked: `SettleFlow invoice ${invoice.id} escrow funded`,
+    completed: `SettleFlow invoice ${invoice.id} settled`
+  };
+  const previews = {
+    created: `${invoice.seller} created a ${amount} invoice for ${invoice.buyer}. Preferred payment method: ${invoice.payment_method === "dodo" ? "Dodo card checkout" : "USDC escrow"}.`,
+    locked: `${amount} is now locked for invoice ${invoice.id}.`,
+    completed: `${invoice.id} has been completed and settled.`
+  };
+
+  await sendSettleFlowEmail({
+    to: recipients,
+    subject: subjects[event],
+    preview: previews[event],
+    actionUrl
+  });
+}
+
 async function updateInvoice(id, updater) {
   const supabase = supabaseClient();
 
@@ -618,6 +679,9 @@ function withPaymentPlan(invoice) {
     status: invoice.status || "Pending",
     buyer: invoice.buyer || "Unknown buyer",
     seller: invoice.seller || "Unknown seller",
+    buyer_email: invoice.buyer_email || "",
+    seller_email: invoice.seller_email || "",
+    payment_method: invoice.payment_method || "usdc",
     risk: invoice.risk || {
       risk_score: 0,
       risk_level: "Low",
@@ -1142,7 +1206,10 @@ export async function handleSettleFlowApi(request, segments = []) {
     });
 
     if (invoiceId) {
-      await updateInvoice(invoiceId, (invoice) => applyDodoPaymentStatus(invoice, paymentStatus, { ...data, paymentId }));
+      const updated = await updateInvoice(invoiceId, (invoice) => applyDodoPaymentStatus(invoice, paymentStatus, { ...data, paymentId }));
+      if (updated?.status === "Completed") {
+        await notifyInvoiceEvent(updated, "completed", request.url).catch((error) => console.warn("Webhook completion email skipped:", error.message));
+      }
     }
 
     return { received: true };
@@ -1194,7 +1261,7 @@ export async function handleSettleFlowApi(request, segments = []) {
   }
 
   if (method === "POST" && route === "/invoice/create") {
-    const { amount, buyer, seller, upfront_percentage } = await jsonBody(request);
+    const { amount, buyer, seller, buyer_email = "", seller_email = "", upfront_percentage, payment_method = "usdc" } = await jsonBody(request);
     if (!amount || !buyer || !seller) throw new ApiError("amount, buyer, and seller are required", 400);
     const risk = await analyzeRisk({ amount: Number(amount), buyerHistory: mockBuyerHistory });
     const config = stablecoinConfig();
@@ -1206,6 +1273,9 @@ export async function handleSettleFlowApi(request, segments = []) {
       currency: "USDC",
       buyer,
       seller,
+      buyer_email: normalizeEmail(buyer_email),
+      seller_email: normalizeEmail(seller_email),
+      payment_method: payment_method === "dodo" ? "dodo" : "usdc",
       status: "Pending",
       upfront_percentage: normalizeUpfrontPercentage(upfront_percentage),
       upfront_paid: false,
@@ -1221,6 +1291,7 @@ export async function handleSettleFlowApi(request, segments = []) {
     const invoices = await readInvoices();
     invoices.unshift(invoice);
     await writeInvoices(invoices);
+    await notifyInvoiceEvent(invoice, "created", request.url).catch((error) => console.warn("Invoice created email skipped:", error.message));
     return withPaymentPlan(invoice);
   }
 
@@ -1267,6 +1338,9 @@ export async function handleSettleFlowApi(request, segments = []) {
     const session = await retrieveDodoCheckoutSession(invoice.payment.sessionId);
     const paymentStatus = session.payment_status || session.status || "processing";
     const updated = await updateInvoice(id, (current) => applyDodoPaymentStatus(current, paymentStatus, session));
+    if (updated.status === "Completed") {
+      await notifyInvoiceEvent(updated, "completed", request.url).catch((error) => console.warn("Dodo completion email skipped:", error.message));
+    }
     return { invoice: withPaymentPlan(updated), session };
   }
 
@@ -1276,6 +1350,7 @@ export async function handleSettleFlowApi(request, segments = []) {
     if (!getOwnedInvoice(invoices, id, user.id)) throw new ApiError("Invoice not found", 404);
     const now = new Date().toISOString();
     const updated = await updateInvoice(id, (current) => ({ ...current, status: "Funded", upfront_paid: true, remaining_paid: true, paid_amount: Number(current.amount || 0), funded_at: current.funded_at || now }));
+    await notifyInvoiceEvent(updated, "locked", request.url).catch((error) => console.warn("Fund email skipped:", error.message));
     return withPaymentPlan(updated);
   }
 
@@ -1285,6 +1360,7 @@ export async function handleSettleFlowApi(request, segments = []) {
     if (!getOwnedInvoice(invoices, id, user.id)) throw new ApiError("Invoice not found", 404);
     const now = new Date().toISOString();
     const updated = await updateInvoice(id, (current) => ({ ...current, status: "Completed", upfront_paid: true, remaining_paid: true, paid_amount: Number(current.amount || 0), completed_at: current.completed_at || now }));
+    await notifyInvoiceEvent(updated, "completed", request.url).catch((error) => console.warn("Release email skipped:", error.message));
     return withPaymentPlan(updated);
   }
 
@@ -1334,6 +1410,7 @@ export async function handleSettleFlowApi(request, segments = []) {
         }
       };
     });
+    await notifyInvoiceEvent(updated, remainingPaid || stage === "full" ? "locked" : "locked", request.url).catch((error) => console.warn("USDC lock email skipped:", error.message));
     return withPaymentPlan(updated);
   }
 
@@ -1349,6 +1426,7 @@ export async function handleSettleFlowApi(request, segments = []) {
     const release = await releaseStablecoinTransfer({ sellerWallet, amount: invoice.amount });
     const completedAt = new Date().toISOString();
     const updated = await updateInvoice(id, (current) => ({ ...current, status: "Completed", upfront_paid: true, remaining_paid: true, paid_amount: Number(current.amount || 0), completed_at: current.completed_at || completedAt, stablecoin: { ...(current.stablecoin || {}), status: "released", sellerWallet, releaseTx: release.signature, releaseExplorerUrl: release.explorerUrl, sourceTokenAccount: release.sourceTokenAccount, destinationTokenAccount: release.destinationTokenAccount, mode: "real_spl" } }));
+    await notifyInvoiceEvent(updated, "completed", request.url).catch((error) => console.warn("USDC release email skipped:", error.message));
     return withPaymentPlan(updated);
   }
 

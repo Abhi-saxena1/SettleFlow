@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Plus } from "lucide-react";
+import { CreditCard, Loader2, Plus, Wallet } from "lucide-react";
 import { createInvoice } from "../lib/api";
 
 export default function InvoiceForm({ disabled = false, onCreated, onError, onLoginRequired }) {
@@ -9,7 +9,10 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
     amount: "15000",
     buyer: "Northstar Retail",
     seller: "Atlas Components",
-    upfront_percentage: "50"
+    buyer_email: "",
+    seller_email: "",
+    upfront_percentage: "50",
+    payment_method: "usdc"
   });
   const [loading, setLoading] = useState(false);
 
@@ -77,6 +80,28 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
           />
         </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="grid gap-2 text-sm font-bold text-black/55">
+            Buyer email
+            <input
+              type="email"
+              value={form.buyer_email}
+              onChange={(event) => updateField("buyer_email", event.target.value)}
+              className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
+              placeholder="buyer@company.com"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-black/55">
+            Seller email
+            <input
+              type="email"
+              value={form.seller_email}
+              onChange={(event) => updateField("seller_email", event.target.value)}
+              className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
+              placeholder="seller@company.com"
+            />
+          </label>
+        </div>
         <label className="grid gap-2 text-sm font-bold text-black/55">
           Upfront %
           <input
@@ -89,6 +114,27 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
           />
         </label>
+        <div className="grid gap-2 text-sm font-bold text-black/55">
+          Payment method
+          <div className="grid grid-cols-2 gap-2 rounded-xl bg-mint p-1">
+            <button
+              type="button"
+              onClick={() => updateField("payment_method", "usdc")}
+              className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-black ${form.payment_method === "usdc" ? "bg-ink text-white shadow-sm" : "text-ink hover:bg-white"}`}
+            >
+              <Wallet size={16} />
+              USDC Escrow
+            </button>
+            <button
+              type="button"
+              onClick={() => updateField("payment_method", "dodo")}
+              className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-black ${form.payment_method === "dodo" ? "bg-ink text-white shadow-sm" : "text-ink hover:bg-white"}`}
+            >
+              <CreditCard size={16} />
+              Dodo Card
+            </button>
+          </div>
+        </div>
       </div>
       <button className="button-primary mt-6 w-full gap-2" disabled={loading}>
         {loading ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}

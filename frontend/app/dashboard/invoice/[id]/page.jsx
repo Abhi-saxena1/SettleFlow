@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Circle, ExternalLink, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Circle, Download, ExternalLink, Loader2, Printer, RefreshCw, Trash2 } from "lucide-react";
 import AuthModal from "../../../../components/AuthModal";
 import Navbar from "../../../../components/Navbar";
 import { createDodoCheckout, deleteInvoice, getInvoice, syncDodoPayment } from "../../../../lib/api";
@@ -167,6 +167,7 @@ export default function InvoiceDetailPage() {
   const progress = Number(invoice?.payment_progress || 0);
   const escrowUrl = invoice?.stablecoin?.escrowExplorerUrl || explorerUrl(invoice?.stablecoin?.escrowTx);
   const releaseUrl = invoice?.stablecoin?.releaseExplorerUrl || explorerUrl(invoice?.stablecoin?.releaseTx);
+  const paymentMethod = invoice?.payment_method || "usdc";
 
   useEffect(() => {
     setSession(getStoredSession());
@@ -261,6 +262,32 @@ export default function InvoiceDetailPage() {
     setError("");
   }
 
+  function exportInvoiceJson() {
+    const payload = {
+      id: invoice.id,
+      amount: invoice.amount,
+      currency: invoice.currency,
+      buyer: invoice.buyer,
+      seller: invoice.seller,
+      status: invoice.status,
+      payment_method: invoice.payment_method,
+      upfront_amount: invoice.upfront_amount,
+      remaining_amount: invoice.remaining_amount,
+      risk: invoice.risk,
+      createdAt: invoice.createdAt,
+      completed_at: invoice.completed_at,
+      payment: invoice.payment,
+      stablecoin: invoice.stablecoin
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${invoice.id}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <>
       <Navbar />
@@ -296,7 +323,7 @@ export default function InvoiceDetailPage() {
           </div>
         ) : (
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-            <section className="rounded-xl border border-black/10 bg-white p-6 shadow-md">
+            <section id="invoice-print-area" className="rounded-xl border border-black/10 bg-white p-6 shadow-md">
               <div className="flex flex-wrap items-start justify-between gap-5">
                 <div>
                   <p className="section-kicker">Invoice Detail</p>
@@ -310,6 +337,7 @@ export default function InvoiceDetailPage() {
 
               <div className="mt-6 flex flex-wrap gap-2">
                 <Pill className={statusStyles[invoice.status] || statusStyles.Pending}>{invoice.status}</Pill>
+                <Pill className="bg-mint text-ink">{paymentMethod === "dodo" ? "Dodo card rail" : "USDC escrow rail"}</Pill>
                 <Pill className={riskStyles[invoice.risk?.risk_level || "Low"]}>
                   {invoice.risk?.risk_level || "Low"} risk - {invoice.risk?.risk_score || 0}
                 </Pill>
@@ -348,7 +376,7 @@ export default function InvoiceDetailPage() {
               </div>
 
               <div className="mt-8 flex flex-wrap gap-3 border-t border-black/5 pt-5">
-                {!invoice.payment?.checkoutUrl ? (
+                {paymentMethod === "dodo" && (!invoice.payment?.checkoutUrl ? (
                   <button onClick={startDodoCheckout} disabled={busy || invoice.status === "Completed"} className="button-primary gap-2">
                     {busy ? <Loader2 className="animate-spin" size={17} /> : <ExternalLink size={17} />}
                     Pay with Dodo
@@ -358,16 +386,24 @@ export default function InvoiceDetailPage() {
                     <ExternalLink size={17} />
                     Open Dodo checkout
                   </a>
-                )}
-                <button
+                ))}
+                {paymentMethod === "dodo" && <button
                   onClick={() => runInvoiceAction(() => syncDodoPayment(invoice.id), () => "Dodo payment status synced.")}
                   disabled={busy || !invoice.payment?.sessionId}
                   className="button-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {busy ? <Loader2 className="animate-spin" size={17} /> : <RefreshCw size={17} />}
                   Sync Dodo
+                </button>}
+                {paymentMethod === "usdc" && <Link href="/dashboard#create" className="button-primary">Manage USDC escrow</Link>}
+                <button onClick={() => window.print()} className="button-secondary gap-2">
+                  <Printer size={16} />
+                  Print / Save PDF
                 </button>
-                <Link href="/dashboard#create" className="button-secondary">Manage USDC escrow</Link>
+                <button onClick={exportInvoiceJson} className="button-secondary gap-2">
+                  <Download size={16} />
+                  Export JSON
+                </button>
                 <button onClick={removeInvoice} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-red-100 bg-red-50 px-5 py-3 text-sm font-black text-red-700">
                   <Trash2 size={16} />
                   Delete

@@ -199,3 +199,28 @@ input {
     transition-duration: 1ms !important;
   }
 }
+
+@media print {
+  body {
+    background: #ffffff !important;
+  }
+
+  nav,
+  .print-hidden,
+  button,
+  a.button-primary,
+  a.button-secondary {
+    display: none !important;
+  }
+
+  .container-shell {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  #invoice-print-area {
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 24px !important;
+  }
+}

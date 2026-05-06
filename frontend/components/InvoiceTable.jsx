@@ -126,6 +126,7 @@ function InvoiceActions({
   onSyncPayment
 }) {
   const actionBusy = busyId === invoice.id;
+  const paymentMethod = invoice.payment_method || "usdc";
 
   if (invoice.status === "Completed") {
     return (
@@ -161,7 +162,7 @@ function InvoiceActions({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      {!invoice.payment?.checkoutUrl ? (
+      {paymentMethod === "dodo" && (!invoice.payment?.checkoutUrl ? (
         <button
           onClick={() => onDodoCheckout(invoice.id)}
           className="button-primary h-11 gap-2 px-5 py-0 leading-none"
@@ -186,8 +187,8 @@ function InvoiceActions({
             {actionBusy ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
           </button>
         </>
-      )}
-      {!invoice.upfront_paid && (
+      ))}
+      {paymentMethod === "usdc" && !invoice.upfront_paid && (
         <button
           onClick={() => onFundStablecoin(invoice, "upfront")}
           className="button-primary h-11 gap-2 px-5 py-0 leading-none"
@@ -197,7 +198,7 @@ function InvoiceActions({
           {actionBusy ? <Loader2 className="animate-spin" size={16} /> : "Lock Upfront USDC"}
         </button>
       )}
-      {invoice.upfront_paid && !invoice.remaining_paid && (
+      {paymentMethod === "usdc" && invoice.upfront_paid && !invoice.remaining_paid && (
         <button
           onClick={() => onFundStablecoin(invoice, "remaining")}
           className="button-primary h-11 gap-2 px-5 py-0 leading-none"
@@ -206,6 +207,12 @@ function InvoiceActions({
         >
           {actionBusy ? <Loader2 className="animate-spin" size={16} /> : "Lock Remaining USDC"}
         </button>
+      )}
+      {paymentMethod === "dodo" && (
+        <span className="rounded-full bg-mint px-4 py-3 text-xs font-black text-black/50">Card rail selected</span>
+      )}
+      {paymentMethod === "usdc" && (
+        <span className="rounded-full bg-mint px-4 py-3 text-xs font-black text-black/50">USDC escrow selected</span>
       )}
       <button
         onClick={() => onDelete(invoice.id)}
@@ -264,6 +271,9 @@ function InvoiceCard({
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <StatusPill className={statusStyles[invoice.status] || statusStyles.Pending}>{invoice.status}</StatusPill>
+        <StatusPill className="bg-mint text-ink">
+          {(invoice.payment_method || "usdc") === "dodo" ? "Dodo card" : "USDC escrow"}
+        </StatusPill>
         <StatusPill className={riskStyles[invoice.risk?.risk_level || "Low"]}>
           {invoice.risk?.risk_level || "Low"} - {invoice.risk?.risk_score || 0}
         </StatusPill>
