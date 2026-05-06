@@ -38,6 +38,10 @@ export function getInvoices() {
   return request("/invoice/all");
 }
 
+export function getInvoice(id) {
+  return request(`/invoice/${id}`);
+}
+
 export function importInvoices(invoices) {
   return request("/invoice/import", {
     method: "POST",

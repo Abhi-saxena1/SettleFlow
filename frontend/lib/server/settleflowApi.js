@@ -1155,6 +1155,13 @@ export async function handleSettleFlowApi(request, segments = []) {
     return invoices.filter((invoice) => invoice.ownerUserId === user.id && invoice.id).map(withPaymentPlan);
   }
 
+  if (method === "GET" && segments[0] === "invoice" && segments[1]) {
+    const invoices = await readInvoices();
+    const invoice = getOwnedInvoice(invoices, segments[1], user.id);
+    if (!invoice) throw new ApiError("Invoice not found", 404);
+    return withPaymentPlan(invoice);
+  }
+
   if (method === "POST" && route === "/invoice/import") {
     const body = await jsonBody(request);
     const incoming = Array.isArray(body.invoices) ? body.invoices : [];

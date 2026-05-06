@@ -1,6 +1,7 @@
 "use client";
 
 import { ExternalLink, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import Link from "next/link";
 
 const statusStyles = {
   Pending: "bg-yellow-100 text-yellow-800",
@@ -237,7 +238,9 @@ function InvoiceCard({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.16em] text-black/35">Invoice</p>
-          <h3 className="mt-1 text-lg font-black text-ink">{invoice.id}</h3>
+          <Link href={`/dashboard/invoice/${invoice.id}`} className="mt-1 block text-lg font-black text-ink hover:text-leaf">
+            {invoice.id}
+          </Link>
         </div>
         <p className="text-xl font-black text-ink">{formatAmount(invoice.amount, invoice.currency || "USDC")}</p>
       </div>
@@ -278,6 +281,9 @@ function InvoiceCard({
       <StablecoinDetails invoice={invoice} />
 
       <div className="mt-5 border-t border-black/5 pt-4">
+        <Link href={`/dashboard/invoice/${invoice.id}`} className="button-secondary mb-3 h-11 gap-2 px-5 py-0 leading-none">
+          View details
+        </Link>
         <InvoiceActions
           invoice={invoice}
           busyId={busyId}
