@@ -99,9 +99,17 @@ function supabaseClient() {
     return null;
   }
 
+  const supabaseUrl = process.env.SUPABASE_URL.trim().replace(/\/$/, "");
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(supabaseUrl)) {
+    throw new ApiError(
+      "SUPABASE_URL is invalid. Use the Project URL from Supabase Settings > API, like https://your-project-ref.supabase.co. Do not use the app.supabase.com dashboard URL.",
+      500
+    );
+  }
+
   if (!supabaseGlobal.client) {
     supabaseGlobal.client = createClient(
-      process.env.SUPABASE_URL,
+      supabaseUrl,
       process.env.SUPABASE_SERVICE_ROLE_KEY,
       {
         auth: {
@@ -113,6 +121,15 @@ function supabaseClient() {
   }
 
   return supabaseGlobal.client;
+}
+
+function supabaseErrorMessage(error) {
+  const message = String(error?.message || error || "Unknown Supabase error");
+  if (message.trim().startsWith("<!DOCTYPE") || message.includes("<html")) {
+    return "Supabase returned an HTML page instead of JSON. Check SUPABASE_URL in Vercel: it must be https://your-project-ref.supabase.co, not the Supabase dashboard URL.";
+  }
+
+  return message;
 }
 
 function supabaseEnabled() {
@@ -262,7 +279,7 @@ async function readInvoices() {
       .order("updated_at", { ascending: false });
 
     if (error) {
-      console.error("Supabase readInvoices failed, using JSON fallback:", error.message);
+      console.error("Supabase readInvoices failed, using JSON fallback:", supabaseErrorMessage(error));
     } else {
       return data.map(fromInvoiceRecord);
     }
@@ -281,7 +298,7 @@ async function writeInvoices(invoices) {
       .upsert(records, { onConflict: "id" });
 
     if (error) {
-      console.error("Supabase writeInvoices failed, using JSON fallback:", error.message);
+      console.error("Supabase writeInvoices failed, using JSON fallback:", supabaseErrorMessage(error));
     } else {
       memoryStore[INVOICES_FILE] = invoices;
       return;
@@ -301,7 +318,7 @@ async function readUsers() {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Supabase readUsers failed, using JSON fallback:", error.message);
+      console.error("Supabase readUsers failed, using JSON fallback:", supabaseErrorMessage(error));
     } else {
       return data.map(fromUserRecord);
     }
@@ -332,7 +349,7 @@ async function writeUsers(users) {
       .upsert(normalizedUsers.map(toUserRecord), { onConflict: "email" });
 
     if (error) {
-      console.error("Supabase writeUsers failed, using JSON fallback:", error.message);
+      console.error("Supabase writeUsers failed, using JSON fallback:", supabaseErrorMessage(error));
     } else {
       memoryStore[USERS_FILE] = normalizedUsers;
       return;
@@ -355,7 +372,7 @@ async function findUserByEmail(email) {
       .maybeSingle();
 
     if (error) {
-      throw new ApiError(`Unable to check account: ${error.message}`, 500);
+      throw new ApiError(`Unable to check account: ${supabaseErrorMessage(error)}`, 500);
     }
 
     return data ? fromUserRecord(data) : null;
@@ -381,7 +398,7 @@ async function saveUser(user) {
       .single();
 
     if (error) {
-      throw new ApiError(`Unable to save account: ${error.message}`, 500);
+      throw new ApiError(`Unable to save account: ${supabaseErrorMessage(error)}`, 500);
     }
 
     return fromUserRecord(data);
@@ -414,7 +431,7 @@ async function createUser(user) {
     }
 
     if (error) {
-      throw new ApiError(`Unable to create account: ${error.message}`, 500);
+      throw new ApiError(`Unable to create account: ${supabaseErrorMessage(error)}`, 500);
     }
 
     return fromUserRecord(data);
@@ -441,7 +458,7 @@ async function clearAllAuthData() {
       .neq("id", "__never__");
 
     if (invoiceError) {
-      throw new ApiError(`Unable to clear invoices: ${invoiceError.message}`, 500);
+      throw new ApiError(`Unable to clear invoices: ${supabaseErrorMessage(invoiceError)}`, 500);
     }
 
     const { error: userError } = await supabase
@@ -450,7 +467,7 @@ async function clearAllAuthData() {
       .neq("id", "__never__");
 
     if (userError) {
-      throw new ApiError(`Unable to clear users: ${userError.message}`, 500);
+      throw new ApiError(`Unable to clear users: ${supabaseErrorMessage(userError)}`, 500);
     }
   }
 
@@ -508,7 +525,7 @@ async function updateInvoice(id, updater) {
       .maybeSingle();
 
     if (readError) {
-      console.error("Supabase updateInvoice read failed, using JSON fallback:", readError.message);
+      console.error("Supabase updateInvoice read failed, using JSON fallback:", supabaseErrorMessage(readError));
     } else if (record) {
       const updatedInvoice = updater(fromInvoiceRecord(record));
       const { data, error } = await supabase
@@ -518,7 +535,7 @@ async function updateInvoice(id, updater) {
         .single();
 
       if (error) {
-        console.error("Supabase updateInvoice write failed, using JSON fallback:", error.message);
+        console.error("Supabase updateInvoice write failed, using JSON fallback:", supabaseErrorMessage(error));
       } else {
         return fromInvoiceRecord(data);
       }
@@ -1188,7 +1205,7 @@ export async function handleSettleFlowApi(request, segments = []) {
         .eq("owner_user_id", user.id);
 
       if (error) {
-        throw new ApiError(`Unable to delete invoice: ${error.message}`, 500);
+        throw new ApiError(`Unable to delete invoice: ${supabaseErrorMessage(error)}`, 500);
       }
     } else {
       await writeInvoices(invoices.filter((item) => item.id !== segments[1]));
