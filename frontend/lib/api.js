@@ -101,7 +101,7 @@ export function syncDodoPayment(id) {
   return request("/invoice/payment/sync", {
     method: "POST",
     body: JSON.stringify({ id })
-  });
+  }).then((result) => result.invoice || result);
 }
 
 export function getStablecoinConfig() {

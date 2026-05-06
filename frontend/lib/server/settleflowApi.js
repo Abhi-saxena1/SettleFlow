@@ -301,6 +301,38 @@ function buildAnalytics(invoices) {
   };
 }
 
+function normalizeDodoStatus(status) {
+  return String(status || "").toLowerCase();
+}
+
+function isDodoPaid(status) {
+  return ["succeeded", "paid", "completed", "complete", "captured", "confirmed", "success"].includes(
+    normalizeDodoStatus(status)
+  );
+}
+
+function applyDodoPaymentStatus(invoice, paymentStatus, data = {}) {
+  const paid = isDodoPaid(paymentStatus);
+  const now = new Date().toISOString();
+
+  return {
+    ...invoice,
+    status: paid ? "Completed" : invoice.status,
+    upfront_paid: paid ? true : invoice.upfront_paid || false,
+    remaining_paid: paid ? true : invoice.remaining_paid || false,
+    paid_amount: paid ? Number(invoice.amount || 0) : invoice.paid_amount || 0,
+    funded_at: paid ? invoice.funded_at || now : invoice.funded_at || null,
+    completed_at: paid ? invoice.completed_at || now : invoice.completed_at || null,
+    payment: {
+      ...(invoice.payment || {}),
+      provider: "dodo",
+      status: paymentStatus || "webhook_received",
+      paymentId: data.payment_id || data.id || data.payment?.id || invoice.payment?.paymentId || null,
+      updatedAt: now
+    }
+  };
+}
+
 function fallbackRiskScore(amount, history = []) {
   const numericAmount = Number(amount || 0);
   const latePayments = history.filter((item) => item.status === "late").length;
@@ -661,14 +693,7 @@ export async function handleSettleFlowApi(request, segments = []) {
     const paymentStatus = data.payment_status || data.status || data.payment?.status;
     console.log("Dodo webhook event", { type: payload.type || payload.event_type || payload.event, invoiceId, paymentStatus });
     if (invoiceId) {
-      await updateInvoice(invoiceId, (invoice) => ({
-        ...invoice,
-        status: paymentStatus === "succeeded" && invoice.status === "Pending" ? "Funded" : invoice.status,
-        upfront_paid: paymentStatus === "succeeded" ? true : invoice.upfront_paid || false,
-        remaining_paid: paymentStatus === "succeeded" ? true : invoice.remaining_paid || false,
-        funded_at: paymentStatus === "succeeded" ? invoice.funded_at || new Date().toISOString() : invoice.funded_at || null,
-        payment: { ...(invoice.payment || {}), provider: "dodo", status: paymentStatus || "webhook_received", paymentId: data.payment_id || data.id || data.payment?.id || null, updatedAt: new Date().toISOString() }
-      }));
+      await updateInvoice(invoiceId, (invoice) => applyDodoPaymentStatus(invoice, paymentStatus, data));
     }
     return { received: true };
   }
@@ -768,7 +793,7 @@ export async function handleSettleFlowApi(request, segments = []) {
     if (!invoice.payment?.sessionId) throw new ApiError("Invoice does not have a Dodo checkout session yet", 400);
     const session = await retrieveDodoCheckoutSession(invoice.payment.sessionId);
     const paymentStatus = session.payment_status || session.status || "processing";
-    const updated = await updateInvoice(id, (current) => ({ ...current, status: paymentStatus === "succeeded" && current.status === "Pending" ? "Funded" : current.status, payment: { ...(current.payment || {}), status: paymentStatus, updatedAt: new Date().toISOString() } }));
+    const updated = await updateInvoice(id, (current) => applyDodoPaymentStatus(current, paymentStatus, session));
     return { invoice: withPaymentPlan(updated), session };
   }
 

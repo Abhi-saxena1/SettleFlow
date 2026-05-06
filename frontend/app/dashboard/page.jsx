@@ -17,7 +17,6 @@ import {
   createDodoCheckout,
   deleteInvoice,
   fundStablecoinEscrow,
-  getAnalyticsSummary,
   getStablecoinConfig,
   importInvoices,
   getInvoices,
@@ -49,21 +48,45 @@ export default function DashboardPage() {
 
   const isAuthenticated = Boolean(session?.token);
 
+  function buildDashboardAnalytics(invoiceList) {
+    const completedInvoices = invoiceList.filter((invoice) => invoice.status === "Completed");
+    const totalSettled = completedInvoices.reduce((sum, invoice) => sum + Number(invoice.amount || 0), 0);
+    const durations = completedInvoices
+      .map((invoice) => {
+        const fundedAt = invoice.funded_at ? new Date(invoice.funded_at).getTime() : NaN;
+        const completedAt = invoice.completed_at ? new Date(invoice.completed_at).getTime() : NaN;
+        return Number.isFinite(fundedAt) && Number.isFinite(completedAt) ? completedAt - fundedAt : null;
+      })
+      .filter((duration) => duration !== null && duration >= 0);
+    const averageHours = durations.length
+      ? durations.reduce((sum, duration) => sum + duration, 0) / durations.length / 36e5
+      : 0;
+
+    return {
+      totalSettled: Number(totalSettled.toFixed(2)),
+      avgSettlementTimeHours: averageHours > 0 && averageHours < 0.01 ? 0.01 : Number(averageHours.toFixed(2)),
+      totalInvoices: invoiceList.length
+    };
+  }
+
+  function applyInvoiceList(nextInvoices) {
+    setInvoices(nextInvoices);
+    setAnalytics(buildDashboardAnalytics(nextInvoices));
+    saveCachedInvoices(nextInvoices, session);
+  }
+
   async function loadInvoices() {
     setError("");
     setLoading(true);
     try {
-      let [data, summary] = await Promise.all([getInvoices(), getAnalyticsSummary()]);
+      let data = await getInvoices();
       const cachedInvoices = getCachedInvoices(session);
 
       if (data.length === 0 && cachedInvoices.length > 0) {
         data = await importInvoices(cachedInvoices);
-        summary = await getAnalyticsSummary();
       }
 
-      setInvoices(data);
-      setAnalytics(summary);
-      saveCachedInvoices(data, session);
+      applyInvoiceList(data);
     } catch (err) {
       setError(err.message);
       if (err.message.toLowerCase().includes("login")) {
@@ -109,6 +132,55 @@ export default function DashboardPage() {
     setLoading(false);
   }, [sessionReady, session?.token]);
 
+  useEffect(() => {
+    if (!sessionReady || !session?.token) {
+      return;
+    }
+
+    const invoiceId = new URLSearchParams(window.location.search).get("invoice_id");
+    if (!invoiceId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function syncReturnedDodoPayment() {
+      setBusyId(invoiceId);
+      setError("");
+
+      try {
+        const updated = await syncDodoPayment(invoiceId);
+        if (cancelled) return;
+
+        setInvoices((current) => {
+          const exists = current.some((invoice) => invoice.id === invoiceId);
+          const next = exists
+            ? current.map((invoice) => (invoice.id === invoiceId ? updated : invoice))
+            : [updated, ...current];
+          setAnalytics(buildDashboardAnalytics(next));
+          saveCachedInvoices(next, session);
+          return next;
+        });
+        setNotice(`${updated.id} Dodo payment synced: ${updated.payment?.status || updated.status}.`);
+        window.history.replaceState({}, "", window.location.pathname + window.location.hash);
+      } catch (err) {
+        if (!cancelled) {
+          setError(`Dodo payment sync pending: ${err.message}`);
+        }
+      } finally {
+        if (!cancelled) {
+          setBusyId(null);
+        }
+      }
+    }
+
+    syncReturnedDodoPayment();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionReady, session?.token]);
+
   function promptLogin() {
     setError("Please log in before creating invoices or moving funds.");
     setAuthMode("login");
@@ -142,19 +214,19 @@ export default function DashboardPage() {
       setInvoices((current) => {
         const next = current.map((invoice) => (invoice.id === id ? updated : invoice));
         saveCachedInvoices(next, session);
+        setAnalytics(buildDashboardAnalytics(next));
         return next;
       });
-      const summary = await getAnalyticsSummary();
-      setAnalytics(summary);
       setNotice(`${updated.id} updated to ${updated.status}.`);
     } catch (err) {
       setError(err.message);
       if (err.message.toLowerCase().includes("invoice not found")) {
-        setInvoices((current) => current.filter((invoice) => invoice.id !== id));
-        const summary = await getAnalyticsSummary().catch(() => null);
-        if (summary) {
-          setAnalytics(summary);
-        }
+        setInvoices((current) => {
+          const next = current.filter((invoice) => invoice.id !== id);
+          saveCachedInvoices(next, session);
+          setAnalytics(buildDashboardAnalytics(next));
+          return next;
+        });
       }
     } finally {
       setBusyId(null);
@@ -179,10 +251,9 @@ export default function DashboardPage() {
       setInvoices((current) => {
         const next = current.filter((invoice) => invoice.id !== id);
         saveCachedInvoices(next, session);
+        setAnalytics(buildDashboardAnalytics(next));
         return next;
       });
-      const summary = await getAnalyticsSummary();
-      setAnalytics(summary);
       setNotice("Invoice deleted.");
     } catch (err) {
       setError(err.message);
@@ -207,6 +278,7 @@ export default function DashboardPage() {
       setInvoices((current) => {
         const next = current.map((invoice) => (invoice.id === id ? result.invoice : invoice));
         saveCachedInvoices(next, session);
+        setAnalytics(buildDashboardAnalytics(next));
         return next;
       });
       setNotice(`Dodo checkout created for ${Number(result.checkout?.intendedAmount || 0).toLocaleString()} USDC.`);
@@ -340,10 +412,9 @@ export default function DashboardPage() {
       setInvoices((current) => {
         const next = current.map((item) => (item.id === invoice.id ? updated : item));
         saveCachedInvoices(next, session);
+        setAnalytics(buildDashboardAnalytics(next));
         return next;
       });
-      const summary = await getAnalyticsSummary();
-      setAnalytics(summary);
       setNotice(`${stageAmount.toLocaleString()} USDC locked in escrow. Tx: ${signature.slice(0, 8)}...`);
     } catch (err) {
       setError(formatWalletError(err));
@@ -454,9 +525,9 @@ export default function DashboardPage() {
               setInvoices((current) => {
                 const next = [invoice, ...current];
                 saveCachedInvoices(next, session);
+                setAnalytics(buildDashboardAnalytics(next));
                 return next;
               });
-              setAnalytics((current) => ({ ...current, totalInvoices: current.totalInvoices + 1 }));
             }}
           />
           <section className="min-w-0">
