@@ -57,8 +57,16 @@ function Pill({ children, className }) {
 function buildTimeline(invoice) {
   const paymentStatus = String(invoice.payment?.status || "").toLowerCase();
   const dodoPaid = ["succeeded", "paid", "completed", "captured"].includes(paymentStatus);
+  const hasDodoActivity = Boolean(invoice.payment?.checkoutUrl || invoice.payment?.sessionId || dodoPaid);
+  const hasUsdcActivity = Boolean(
+    invoice.stablecoin?.escrowTx ||
+    invoice.stablecoin?.releaseTx ||
+    invoice.upfront_paid ||
+    invoice.remaining_paid ||
+    invoice.stablecoin?.status === "released"
+  );
 
-  return [
+  const steps = [
     {
       label: "Invoice created",
       detail: `${formatAmount(invoice.amount, invoice.currency)} invoice opened for ${invoice.buyer}.`,
@@ -71,33 +79,46 @@ function buildTimeline(invoice) {
       done: Boolean(invoice.risk),
       date: invoice.risk?.generated_at || invoice.createdAt
     },
-    {
-      label: "Upfront locked",
-      detail: `${formatAmount(invoice.upfront_amount, invoice.currency)} upfront payment ${invoice.upfront_paid ? "locked" : "waiting"}.`,
-      done: Boolean(invoice.upfront_paid),
-      date: invoice.funded_at
-    },
-    {
-      label: "Remaining locked",
-      detail: `${formatAmount(invoice.remaining_amount, invoice.currency)} remaining payment ${invoice.remaining_paid ? "locked" : "waiting"}.`,
-      done: Boolean(invoice.remaining_paid),
-      date: invoice.remaining_paid ? invoice.funded_at : null
-    },
-    {
-      label: "Dodo payment",
-      detail: invoice.payment?.checkoutUrl
+  ];
+
+  if (hasUsdcActivity || !hasDodoActivity) {
+    steps.push(
+      {
+        label: "Upfront USDC locked",
+        detail: `${formatAmount(invoice.upfront_amount, invoice.currency)} upfront payment ${invoice.upfront_paid ? "locked in escrow" : "waiting for escrow"}.`,
+        done: Boolean(invoice.upfront_paid),
+        date: invoice.funded_at
+      },
+      {
+        label: "Remaining USDC locked",
+        detail: `${formatAmount(invoice.remaining_amount, invoice.currency)} remaining payment ${invoice.remaining_paid ? "locked in escrow" : "waiting for escrow"}.`,
+        done: Boolean(invoice.remaining_paid),
+        date: invoice.remaining_paid ? invoice.funded_at : null
+      }
+    );
+  }
+
+  if (hasDodoActivity) {
+    steps.push({
+      label: "Dodo card payment",
+      detail: dodoPaid
         ? `Dodo checkout ${formatStatus(invoice.payment?.status)}.`
-        : "No card checkout created yet.",
+        : `Dodo checkout ${formatStatus(invoice.payment?.status || "created")}.`,
       done: dodoPaid,
       date: invoice.payment?.updatedAt || invoice.payment?.createdAt
-    },
+    });
+  }
+
+  steps.push(
     {
       label: "Settlement completed",
       detail: invoice.status === "Completed" ? "Funds released and invoice completed." : "Waiting for final release.",
       done: invoice.status === "Completed",
       date: invoice.completed_at
     }
-  ];
+  );
+
+  return steps;
 }
 
 function Timeline({ invoice }) {
