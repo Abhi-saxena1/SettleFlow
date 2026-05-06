@@ -128,8 +128,16 @@ function supabaseErrorMessage(error) {
   if (message.trim().startsWith("<!DOCTYPE") || message.includes("<html")) {
     return "Supabase returned an HTML page instead of JSON. Check SUPABASE_URL in Vercel: it must be https://your-project-ref.supabase.co, not the Supabase dashboard URL.";
   }
+  if (message.includes("schema cache") || message.includes("Could not find the table")) {
+    return "Supabase tables are missing. Run frontend/supabase/schema.sql in Supabase SQL Editor, then redeploy.";
+  }
 
   return message;
+}
+
+function isMissingSupabaseTable(error) {
+  const message = String(error?.message || "");
+  return error?.code === "42P01" || message.includes("schema cache") || message.includes("Could not find the table");
 }
 
 function supabaseEnabled() {
@@ -450,6 +458,7 @@ async function createUser(user) {
 
 async function clearAllAuthData() {
   const supabase = supabaseClient();
+  const skipped = [];
 
   if (supabase) {
     const { error: invoiceError } = await supabase
@@ -458,7 +467,11 @@ async function clearAllAuthData() {
       .neq("id", "__never__");
 
     if (invoiceError) {
-      throw new ApiError(`Unable to clear invoices: ${supabaseErrorMessage(invoiceError)}`, 500);
+      if (isMissingSupabaseTable(invoiceError)) {
+        skipped.push("settleflow_invoices");
+      } else {
+        throw new ApiError(`Unable to clear invoices: ${supabaseErrorMessage(invoiceError)}`, 500);
+      }
     }
 
     const { error: userError } = await supabase
@@ -467,7 +480,11 @@ async function clearAllAuthData() {
       .neq("id", "__never__");
 
     if (userError) {
-      throw new ApiError(`Unable to clear users: ${supabaseErrorMessage(userError)}`, 500);
+      if (isMissingSupabaseTable(userError)) {
+        skipped.push("settleflow_users");
+      } else {
+        throw new ApiError(`Unable to clear users: ${supabaseErrorMessage(userError)}`, 500);
+      }
     }
   }
 
@@ -475,6 +492,7 @@ async function clearAllAuthData() {
   memoryStore[INVOICES_FILE] = [];
   await writeJson(USERS_FILE, []);
   await writeJson(INVOICES_FILE, []);
+  return { skipped };
 }
 
 async function sendResetCodeEmail({ email, code, name }) {
@@ -1025,8 +1043,13 @@ export async function handleSettleFlowApi(request, segments = []) {
       throw new ApiError("confirmation must be CLEAR_LOGIN_DATA", 400);
     }
 
-    await clearAllAuthData();
-    return { cleared: true, message: "All SettleFlow test users and invoices were cleared." };
+    const result = await clearAllAuthData();
+    return {
+      cleared: true,
+      message: result.skipped.length
+        ? `Browser/local test login data cleared. Supabase tables missing: ${result.skipped.join(", ")}. Run frontend/supabase/schema.sql in Supabase SQL Editor.`
+        : "All SettleFlow test users and invoices were cleared."
+    };
   }
 
   if (method === "POST" && route === "/auth/login") {

@@ -81,11 +81,11 @@ export default function AuthModal({ mode, onClose, onSuccess }) {
     setNotice("");
 
     try {
-      await clearTestAuthData();
+      const result = await clearTestAuthData();
       clearSettleFlowStorage();
       setForm(initialForm);
       setActiveMode("signup");
-      setNotice("Test login data cleared. Create a fresh account now.");
+      setNotice(result.message || "Test login data cleared. Create a fresh account now.");
     } catch (err) {
       clearSettleFlowStorage();
       setError(`${err.message} Browser login cache was still cleared.`);
