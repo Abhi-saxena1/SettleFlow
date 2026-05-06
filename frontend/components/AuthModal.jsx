@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { KeyRound, Loader2, LogIn, UserPlus, X } from "lucide-react";
-import { clearTestAuthData, forgotPassword, logIn, resetPassword, signUp } from "../lib/api";
-import { clearSettleFlowStorage } from "../lib/authSession";
+import { forgotPassword, logIn, resetPassword, signUp } from "../lib/api";
 
 const initialForm = {
   name: "",
@@ -75,25 +74,6 @@ export default function AuthModal({ mode, onClose, onSuccess }) {
     }
   }
 
-  async function resetTestAuth() {
-    setLoading(true);
-    setError("");
-    setNotice("");
-
-    try {
-      const result = await clearTestAuthData();
-      clearSettleFlowStorage();
-      setForm(initialForm);
-      setActiveMode("signup");
-      setNotice(result.message || "Test login data cleared. Create a fresh account now.");
-    } catch (err) {
-      clearSettleFlowStorage();
-      setError(`${err.message} Browser login cache was still cleared.`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
     <div className="fixed inset-0 z-[100] grid place-items-start overflow-y-auto bg-black/45 px-4 py-6 backdrop-blur-sm sm:place-items-center sm:py-8">
       <div className="my-auto w-full max-w-md overflow-hidden rounded-[1.5rem] border border-black/10 bg-white shadow-glow">
@@ -125,17 +105,6 @@ export default function AuthModal({ mode, onClose, onSuccess }) {
             className={`rounded-full px-4 py-2 text-sm font-black ${isSignup ? "bg-ink text-white" : "bg-sage text-ink"}`}
           >
             Sign Up
-          </button>
-        </div>
-
-        <div className="px-6 pb-3">
-          <button
-            type="button"
-            onClick={resetTestAuth}
-            disabled={loading}
-            className="w-full rounded-full border border-red-200 bg-red-50 px-4 py-3 text-sm font-black text-red-700 transition hover:-translate-y-0.5 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Reset test login data
           </button>
         </div>
 
