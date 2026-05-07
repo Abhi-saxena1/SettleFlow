@@ -119,6 +119,13 @@ export function syncDodoPayment(id) {
   }).then((result) => result.invoice || result);
 }
 
+export function markSellerPayoutPaid(id, reference = "", note = "") {
+  return request("/seller-payout/mark-paid", {
+    method: "POST",
+    body: JSON.stringify({ id, reference, note })
+  });
+}
+
 export function getStablecoinConfig() {
   return request("/stablecoin/config");
 }

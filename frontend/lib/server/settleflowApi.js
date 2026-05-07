@@ -223,12 +223,36 @@ async function mirrorEscrowInvoice(invoice) {
   const supabase = supabaseClient();
   if (!supabase || !invoice?.id) return;
 
+  const planned = withPaymentPlan(invoice);
   const { error } = await supabase
     .from("invoices")
-    .upsert(toEscrowInvoiceRecord(invoice), { onConflict: "id" });
+    .upsert(toEscrowInvoiceRecord(planned), { onConflict: "id" });
 
   if (error) {
     console.warn("Escrow invoice realtime mirror skipped:", supabaseErrorMessage(error));
+  }
+
+  if (planned.payment_method === "dodo" && planned.seller_payout?.status && planned.seller_payout.status !== "not_required") {
+    const { error: payoutError } = await supabase
+      .from("seller_payouts")
+      .upsert({
+        invoice_id: planned.id,
+        seller_name: planned.seller,
+        seller_email: planned.seller_email || null,
+        amount: planned.seller_payout.amount || (planned.seller_payout.status === "not_started" ? 0 : planned.amount),
+        currency: planned.seller_payout.currency || planned.currency || "USDC",
+        provider: planned.seller_payout.provider || "manual",
+        status: planned.seller_payout.status,
+        reference: planned.seller_payout.reference || null,
+        note: planned.seller_payout.note || null,
+        paid_at: planned.seller_payout.paidAt || null,
+        created_at: planned.seller_payout.createdAt || planned.createdAt || new Date().toISOString(),
+        updated_at: planned.seller_payout.updatedAt || new Date().toISOString()
+      }, { onConflict: "invoice_id" });
+
+    if (payoutError) {
+      console.warn("Seller payout realtime mirror skipped:", supabaseErrorMessage(payoutError));
+    }
   }
 }
 
@@ -282,6 +306,13 @@ function publicInvoice(invoice) {
       status: safeInvoice.payment?.status || "not_started",
       updatedAt: safeInvoice.payment?.updatedAt || null,
       createdAt: safeInvoice.payment?.createdAt || null
+    },
+    seller_payout: {
+      status: safeInvoice.seller_payout?.status || "not_required",
+      amount: safeInvoice.seller_payout?.amount || 0,
+      reference: safeInvoice.seller_payout?.reference || null,
+      paidAt: safeInvoice.seller_payout?.paidAt || null,
+      updatedAt: safeInvoice.seller_payout?.updatedAt || null
     },
     stablecoin: {
       chain: safeInvoice.stablecoin?.chain,
@@ -581,7 +612,7 @@ async function clearAllAuthData() {
       }
     }
 
-    for (const table of ["invoice_events", "escrow_transactions", "invoices"]) {
+    for (const table of ["invoice_events", "escrow_transactions", "seller_payouts", "invoices"]) {
       const { error } = await supabase
         .from(table)
         .delete()
@@ -805,6 +836,8 @@ function stablecoinConfig() {
 function withPaymentPlan(invoice) {
   const amount = Number(invoice.amount || 0);
   const config = stablecoinConfig();
+  const sellerPayout = invoice.seller_payout || {};
+  const defaultPayoutStatus = invoice.payment_method === "dodo" ? "not_started" : "not_required";
   return {
     ...invoice,
     amount,
@@ -837,6 +870,17 @@ function withPaymentPlan(invoice) {
       checkoutUrl: null,
       paymentId: null,
       mode: "unconfigured"
+    },
+    seller_payout: {
+      provider: "manual",
+      status: sellerPayout.status || defaultPayoutStatus,
+      amount: Number(sellerPayout.amount || 0),
+      currency: sellerPayout.currency || "USDC",
+      reference: sellerPayout.reference || null,
+      note: sellerPayout.note || "",
+      createdAt: sellerPayout.createdAt || null,
+      paidAt: sellerPayout.paidAt || null,
+      updatedAt: sellerPayout.updatedAt || null
     },
     stablecoin: invoice.stablecoin || {
       chain: config.chain,
@@ -923,6 +967,7 @@ function extractDodoWebhookData(payload) {
 function applyDodoPaymentStatus(invoice, paymentStatus, data = {}) {
   const paid = isDodoPaid(paymentStatus);
   const now = new Date().toISOString();
+  const existingPayout = invoice.seller_payout || {};
 
   return {
     ...invoice,
@@ -938,7 +983,20 @@ function applyDodoPaymentStatus(invoice, paymentStatus, data = {}) {
       status: paymentStatus || "webhook_received",
       paymentId: data.payment_id || data.id || data.paymentId || data.payment?.id || invoice.payment?.paymentId || null,
       updatedAt: now
-    }
+    },
+    seller_payout: paid
+      ? {
+          provider: "manual",
+          status: existingPayout.status === "seller_paid" ? "seller_paid" : "pending_platform_payout",
+          amount: Number(invoice.amount || 0),
+          currency: invoice.currency || "USDC",
+          reference: existingPayout.reference || null,
+          note: existingPayout.note || "Dodo collected buyer payment. Platform seller payout is pending.",
+          createdAt: existingPayout.createdAt || now,
+          paidAt: existingPayout.paidAt || null,
+          updatedAt: now
+        }
+      : existingPayout
   };
 }
 
@@ -1463,6 +1521,17 @@ export async function handleSettleFlowApi(request, segments = []) {
       completed_at: null,
       risk,
       payment: { provider: "dodo", status: "not_started", sessionId: null, checkoutUrl: null, paymentId: null, mode: "unconfigured" },
+      seller_payout: {
+        provider: "manual",
+        status: payment_method === "dodo" ? "not_started" : "not_required",
+        amount: 0,
+        currency: "USDC",
+        reference: null,
+        note: "",
+        createdAt: null,
+        paidAt: null,
+        updatedAt: null
+      },
       stablecoin: { chain: config.chain, token: config.symbol, mint: config.mint, status: "not_started", amount: Number(amount), escrowTx: null, releaseTx: null, mode: "real_spl" },
       createdAt: new Date().toISOString()
     };
@@ -1541,6 +1610,35 @@ export async function handleSettleFlowApi(request, segments = []) {
       await notifyInvoiceEvent(updated, "completed", request.url).catch((error) => console.warn("Dodo completion email skipped:", error.message));
     }
     return { invoice: withPaymentPlan(updated), session };
+  }
+
+  if (method === "POST" && route === "/seller-payout/mark-paid") {
+    const { id, reference = "", note = "" } = await jsonBody(request);
+    if (!id) throw new ApiError("invoice id is required", 400);
+    const invoices = await readInvoices();
+    const invoice = getOwnedInvoice(invoices, id, user.id);
+    if (!invoice) throw new ApiError("Invoice not found", 404);
+    if (invoice.payment_method !== "dodo") throw new ApiError("Seller payout tracking is only needed for Dodo card invoices.", 400);
+    if (invoice.status !== "Completed") throw new ApiError("Dodo payment must be completed before marking seller payout paid.", 400);
+
+    const now = new Date().toISOString();
+    const updated = await updateInvoice(id, (current) => ({
+      ...current,
+      seller_payout: {
+        ...(current.seller_payout || {}),
+        provider: "manual",
+        status: "seller_paid",
+        amount: Number(current.amount || 0),
+        currency: current.currency || "USDC",
+        reference: String(reference || "").trim() || `manual-${current.id}`,
+        note: String(note || "").trim(),
+        createdAt: current.seller_payout?.createdAt || now,
+        paidAt: now,
+        updatedAt: now
+      }
+    }));
+    await recordInvoiceEvent(updated, "seller_paid", `Seller payout marked paid for ${Number(updated.amount || 0).toLocaleString()} ${updated.currency || "USDC"}.`).catch((error) => console.warn("Seller payout event skipped:", error.message));
+    return withPaymentPlan(updated);
   }
 
   if (method === "POST" && route === "/invoice/fund") {

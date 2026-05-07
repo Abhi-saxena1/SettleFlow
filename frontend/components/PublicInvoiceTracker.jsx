@@ -75,6 +75,14 @@ function buildTimeline(invoice) {
       done: dodoPaid,
       date: invoice.payment?.updatedAt || invoice.payment?.createdAt
     });
+    steps.push({
+      label: "Seller payout",
+      detail: invoice.seller_payout?.status === "seller_paid"
+        ? `Seller payout completed${invoice.seller_payout?.reference ? ` (${invoice.seller_payout.reference})` : ""}.`
+        : "Platform payout to seller is pending.",
+      done: invoice.seller_payout?.status === "seller_paid",
+      date: invoice.seller_payout?.paidAt || invoice.seller_payout?.updatedAt
+    });
   } else {
     steps.push(
       {
@@ -96,7 +104,9 @@ function buildTimeline(invoice) {
     label: "Funds released",
     detail: invoice.status === "Completed" || invoice.status === "released"
       ? isDodoInvoice
-        ? "Dodo payment completed and invoice settled."
+        ? invoice.seller_payout?.status === "seller_paid"
+          ? "Buyer payment and seller payout completed."
+          : "Buyer payment completed. Seller payout pending."
         : "Seller payout completed."
       : isDodoInvoice
         ? "Awaiting Dodo payment completion."

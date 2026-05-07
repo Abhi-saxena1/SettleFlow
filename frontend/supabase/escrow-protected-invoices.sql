@@ -54,10 +54,30 @@ create table if not exists invoice_events (
   created_at timestamptz not null default now()
 );
 
+create table if not exists seller_payouts (
+  id uuid primary key default gen_random_uuid(),
+  invoice_id text not null unique references invoices(id) on delete cascade,
+  seller_name text,
+  seller_email text,
+  amount numeric(18, 6) not null default 0,
+  currency text not null default 'USDC',
+  provider text not null default 'manual',
+  status text not null default 'pending_platform_payout' check (
+    status in ('not_started', 'pending_platform_payout', 'ready_to_pay_seller', 'seller_payout_processing', 'seller_paid', 'failed')
+  ),
+  reference text,
+  note text,
+  paid_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists invoices_share_token_idx on invoices(share_token);
 create index if not exists invoices_seller_id_idx on invoices(seller_id);
 create index if not exists escrow_transactions_invoice_id_idx on escrow_transactions(invoice_id);
 create index if not exists invoice_events_invoice_id_idx on invoice_events(invoice_id);
+create index if not exists seller_payouts_invoice_id_idx on seller_payouts(invoice_id);
+create index if not exists seller_payouts_status_idx on seller_payouts(status);
 
 create or replace function settleflow_touch_updated_at()
 returns trigger as $$
@@ -76,6 +96,7 @@ alter table users enable row level security;
 alter table invoices enable row level security;
 alter table escrow_transactions enable row level security;
 alter table invoice_events enable row level security;
+alter table seller_payouts enable row level security;
 
 drop policy if exists "public can read invoices by share token" on invoices;
 create policy "public can read invoices by share token"
@@ -92,6 +113,11 @@ create policy "public can read events for public invoices"
 on invoice_events for select
 using (exists (select 1 from invoices where invoices.id = invoice_events.invoice_id and invoices.share_token is not null));
 
+drop policy if exists "public can read payouts for public invoices" on seller_payouts;
+create policy "public can read payouts for public invoices"
+on seller_payouts for select
+using (exists (select 1 from invoices where invoices.id = seller_payouts.invoice_id and invoices.share_token is not null));
+
 -- Realtime publication. Enable replication in Supabase dashboard if needed.
 do $$
 begin
@@ -107,6 +133,11 @@ begin
 
   begin
     alter publication supabase_realtime add table invoice_events;
+  exception when duplicate_object then null;
+  end;
+
+  begin
+    alter publication supabase_realtime add table seller_payouts;
   exception when duplicate_object then null;
   end;
 end $$;

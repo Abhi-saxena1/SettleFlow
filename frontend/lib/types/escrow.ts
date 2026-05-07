@@ -61,3 +61,27 @@ export type InvoiceEvent = {
   description: string;
   created_at: string;
 };
+
+export type SellerPayoutStatus =
+  | "not_started"
+  | "pending_platform_payout"
+  | "ready_to_pay_seller"
+  | "seller_payout_processing"
+  | "seller_paid"
+  | "failed";
+
+export type SellerPayout = {
+  id: string;
+  invoice_id: string;
+  seller_name: string | null;
+  seller_email: string | null;
+  amount: number;
+  currency: string;
+  provider: "manual";
+  status: SellerPayoutStatus;
+  reference: string | null;
+  note: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+};

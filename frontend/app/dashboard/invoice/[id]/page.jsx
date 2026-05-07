@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Circle, Copy, ExternalLink, Loader2, Printer, RefreshCw, Share2, Trash2 } from "lucide-react";
 import AuthModal from "../../../../components/AuthModal";
 import Navbar from "../../../../components/Navbar";
-import { createDodoCheckout, createInvoiceShareLink, deleteInvoice, getInvoice, syncDodoPayment } from "../../../../lib/api";
+import { createDodoCheckout, createInvoiceShareLink, deleteInvoice, getInvoice, markSellerPayoutPaid, syncDodoPayment } from "../../../../lib/api";
 import { AUTH_CHANGED_EVENT, getStoredSession, saveSession } from "../../../../lib/authSession";
 
 const statusStyles = {
@@ -113,6 +113,15 @@ function buildTimeline(invoice) {
       done: dodoPaid,
       date: invoice.payment?.updatedAt || invoice.payment?.createdAt
     });
+
+    steps.push({
+      label: "Seller payout",
+      detail: invoice.seller_payout?.status === "seller_paid"
+        ? `Seller payout marked paid${invoice.seller_payout?.reference ? ` (${invoice.seller_payout.reference})` : ""}.`
+        : "Buyer paid by card. Platform payout to seller is still pending.",
+      done: invoice.seller_payout?.status === "seller_paid",
+      date: invoice.seller_payout?.paidAt || invoice.seller_payout?.updatedAt
+    });
   }
 
   steps.push(
@@ -120,7 +129,9 @@ function buildTimeline(invoice) {
       label: "Settlement completed",
       detail: invoice.status === "Completed"
         ? isDodoInvoice
-          ? "Dodo payment completed and invoice settled."
+          ? invoice.seller_payout?.status === "seller_paid"
+            ? "Buyer payment and seller payout completed."
+            : "Buyer payment completed. Seller payout pending."
           : "USDC released and invoice completed."
         : isDodoInvoice
           ? "Waiting for Dodo payment completion."
@@ -255,6 +266,15 @@ export default function InvoiceDetailPage() {
     );
   }
 
+  async function markSellerPaid() {
+    const reference = window.prompt("Seller payout reference (bank transfer ID, UPI ref, crypto tx, etc.)", invoice.seller_payout?.reference || "");
+    if (reference === null) return;
+    await runInvoiceAction(
+      () => markSellerPayoutPaid(invoice.id, reference),
+      () => "Seller payout marked paid."
+    );
+  }
+
   async function removeInvoice() {
     const confirmed = window.confirm("Delete this invoice?");
     if (!confirmed) return;
@@ -354,6 +374,11 @@ export default function InvoiceDetailPage() {
                   {invoice.risk?.risk_level || "Low"} risk - {invoice.risk?.risk_score || 0}
                 </Pill>
                 {invoice.payment?.status !== "not_started" && <Pill className="bg-purple-100 text-purple-800">Dodo {formatStatus(invoice.payment?.status)}</Pill>}
+                {paymentMethod === "dodo" && invoice.seller_payout?.status !== "not_started" && (
+                  <Pill className={invoice.seller_payout?.status === "seller_paid" ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}>
+                    Seller payout {formatStatus(invoice.seller_payout?.status)}
+                  </Pill>
+                )}
                 {invoice.stablecoin?.status !== "not_started" && <Pill className="bg-emerald-100 text-emerald-800">USDC {formatStatus(invoice.stablecoin?.status)}</Pill>}
               </div>
 
@@ -407,6 +432,12 @@ export default function InvoiceDetailPage() {
                   {busy ? <Loader2 className="animate-spin" size={17} /> : <RefreshCw size={17} />}
                   Sync Dodo
                 </button>}
+                {paymentMethod === "dodo" && invoice.status === "Completed" && invoice.seller_payout?.status !== "seller_paid" && (
+                  <button onClick={markSellerPaid} disabled={busy} className="button-primary gap-2">
+                    {busy ? <Loader2 className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}
+                    Mark seller paid
+                  </button>
+                )}
                 {paymentMethod === "usdc" && <Link href="/dashboard#create" className="button-primary">Manage USDC escrow</Link>}
                 <button onClick={() => window.print()} className="button-secondary gap-2">
                   <Printer size={16} />
@@ -431,6 +462,19 @@ export default function InvoiceDetailPage() {
                     {escrowUrl && <a className="font-black text-leaf underline" href={escrowUrl} target="_blank" rel="noreferrer">Escrow tx</a>}
                     {releaseUrl && <a className="font-black text-leaf underline" href={releaseUrl} target="_blank" rel="noreferrer">Release tx</a>}
                   </div>
+                </div>
+              )}
+              {paymentMethod === "dodo" && (
+                <div className="mt-6 rounded-xl border border-orange-100 bg-orange-50 p-5 text-sm font-semibold text-orange-900/75">
+                  <p className="section-kicker text-orange-700">Seller payout pipeline</p>
+                  <p className="mt-3">
+                    Dodo card payments collect into the platform merchant balance. Seller payout is a separate manual payout step.
+                  </p>
+                  <p className="mt-2 font-black text-orange-950">
+                    Status: {formatStatus(invoice.seller_payout?.status || "not_started")}
+                  </p>
+                  {invoice.seller_payout?.reference && <p className="mt-2">Reference: {invoice.seller_payout.reference}</p>}
+                  {invoice.seller_payout?.paidAt && <p className="mt-2">Paid at: {formatDate(invoice.seller_payout.paidAt)}</p>}
                 </div>
               )}
             </section>

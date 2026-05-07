@@ -33,6 +33,15 @@ const stablecoinStyles = {
   failed: "bg-red-100 text-red-800"
 };
 
+const payoutStyles = {
+  not_started: "bg-gray-100 text-gray-700",
+  pending_platform_payout: "bg-orange-100 text-orange-800",
+  ready_to_pay_seller: "bg-blue-100 text-blue-800",
+  seller_payout_processing: "bg-blue-100 text-blue-800",
+  seller_paid: "bg-green-100 text-green-800",
+  failed: "bg-red-100 text-red-800"
+};
+
 function StatusPill({ children, className }) {
   return (
     <span className={`inline-flex min-h-8 items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-black leading-none ${className}`}>
@@ -239,6 +248,8 @@ function InvoiceCard({
   const stablecoinStatus = invoice.stablecoin?.status || "not_started";
   const showPaymentStatus = paymentStatus !== "not_started";
   const showStablecoinStatus = stablecoinStatus !== "not_started";
+  const payoutStatus = invoice.seller_payout?.status || "not_started";
+  const showPayoutStatus = (invoice.payment_method || "usdc") === "dodo" && payoutStatus !== "not_started";
 
   return (
     <article className="rounded-xl border border-black/10 bg-white p-4 shadow-md">
@@ -282,6 +293,11 @@ function InvoiceCard({
         {showStablecoinStatus && (
           <StatusPill className={stablecoinStyles[stablecoinStatus] || stablecoinStyles.not_started}>
             USDC {formatStatusLabel(stablecoinStatus)}
+          </StatusPill>
+        )}
+        {showPayoutStatus && (
+          <StatusPill className={payoutStyles[payoutStatus] || payoutStyles.not_started}>
+            Seller payout {formatStatusLabel(payoutStatus)}
           </StatusPill>
         )}
       </div>
