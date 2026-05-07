@@ -126,6 +126,13 @@ export function markSellerPayoutPaid(id, reference = "", note = "") {
   });
 }
 
+export function paySellerWithUsdc(id) {
+  return request("/seller-payout/pay-usdc", {
+    method: "POST",
+    body: JSON.stringify({ id })
+  });
+}
+
 export function getStablecoinConfig() {
   return request("/stablecoin/config");
 }

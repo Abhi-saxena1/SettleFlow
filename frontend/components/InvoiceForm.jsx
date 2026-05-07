@@ -20,7 +20,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
     payment_method: "usdc"
   });
   const [loading, setLoading] = useState(false);
-  const requiresSellerWallet = form.payment_method === "usdc";
+  const requiresSellerWallet = true;
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -36,8 +36,8 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
 
     setLoading(true);
     try {
-      if (requiresSellerWallet && !form.seller_wallet.trim()) {
-        throw new Error("Seller wallet is required for USDC escrow invoices.");
+      if (!form.seller_wallet.trim()) {
+        throw new Error("Seller Solana wallet is required so SettleFlow can release or pay out USDC to the seller.");
       }
 
       const invoice = await createInvoice({
@@ -131,13 +131,13 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
           </label>
         </div>
         <label className="grid gap-2 text-sm font-bold text-black/55">
-          Seller wallet address {requiresSellerWallet ? "" : "(optional for Dodo)"}
+          Seller wallet address
           <input
             required={requiresSellerWallet}
             value={form.seller_wallet}
             onChange={(event) => updateField("seller_wallet", event.target.value)}
             className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
-            placeholder={requiresSellerWallet ? "Solana wallet for USDC release" : "Only needed if you also use USDC escrow"}
+            placeholder={form.payment_method === "dodo" ? "Solana wallet for automatic seller payout" : "Solana wallet for USDC release"}
           />
         </label>
         <label className="grid gap-2 text-sm font-bold text-black/55">

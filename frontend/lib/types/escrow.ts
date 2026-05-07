@@ -77,7 +77,7 @@ export type SellerPayout = {
   seller_email: string | null;
   amount: number;
   currency: string;
-  provider: "manual";
+  provider: "manual" | "solana_usdc";
   status: SellerPayoutStatus;
   reference: string | null;
   note: string | null;

@@ -239,12 +239,15 @@ async function mirrorEscrowInvoice(invoice) {
         invoice_id: planned.id,
         seller_name: planned.seller,
         seller_email: planned.seller_email || null,
+        seller_wallet: planned.seller_wallet || planned.seller_payout.sellerWallet || null,
         amount: planned.seller_payout.amount || (planned.seller_payout.status === "not_started" ? 0 : planned.amount),
         currency: planned.seller_payout.currency || planned.currency || "USDC",
         provider: planned.seller_payout.provider || "manual",
         status: planned.seller_payout.status,
         reference: planned.seller_payout.reference || null,
-        note: planned.seller_payout.note || null,
+        note: planned.seller_payout.explorerUrl
+          ? `${planned.seller_payout.note || ""} ${planned.seller_payout.explorerUrl}`.trim()
+          : planned.seller_payout.note || null,
         paid_at: planned.seller_payout.paidAt || null,
         created_at: planned.seller_payout.createdAt || planned.createdAt || new Date().toISOString(),
         updated_at: planned.seller_payout.updatedAt || new Date().toISOString()
@@ -311,6 +314,7 @@ function publicInvoice(invoice) {
       status: safeInvoice.seller_payout?.status || "not_required",
       amount: safeInvoice.seller_payout?.amount || 0,
       reference: safeInvoice.seller_payout?.reference || null,
+      explorerUrl: safeInvoice.seller_payout?.explorerUrl || null,
       paidAt: safeInvoice.seller_payout?.paidAt || null,
       updatedAt: safeInvoice.seller_payout?.updatedAt || null
     },
@@ -878,6 +882,11 @@ function withPaymentPlan(invoice) {
       currency: sellerPayout.currency || "USDC",
       reference: sellerPayout.reference || null,
       note: sellerPayout.note || "",
+      sellerWallet: sellerPayout.sellerWallet || invoice.seller_wallet || "",
+      tx: sellerPayout.tx || null,
+      explorerUrl: sellerPayout.explorerUrl || null,
+      sourceTokenAccount: sellerPayout.sourceTokenAccount || null,
+      destinationTokenAccount: sellerPayout.destinationTokenAccount || null,
       createdAt: sellerPayout.createdAt || null,
       paidAt: sellerPayout.paidAt || null,
       updatedAt: sellerPayout.updatedAt || null
@@ -1234,6 +1243,16 @@ async function releaseStablecoinTransfer({ sellerWallet, amount }) {
     destinationTokenAccount: destinationAta.toBase58(),
     explorerUrl: `https://explorer.solana.com/tx/${signature}?cluster=devnet`
   };
+}
+
+async function sendSellerPayoutUsdc({ sellerWallet, amount }) {
+  const payout = await releaseStablecoinTransfer({ sellerWallet, amount });
+  console.log("Dodo seller payout sent via USDC treasury", {
+    signature: payout.signature,
+    sellerWallet,
+    amount
+  });
+  return payout;
 }
 
 async function requireAuth(headers) {
@@ -1638,6 +1657,55 @@ export async function handleSettleFlowApi(request, segments = []) {
       }
     }));
     await recordInvoiceEvent(updated, "seller_paid", `Seller payout marked paid for ${Number(updated.amount || 0).toLocaleString()} ${updated.currency || "USDC"}.`).catch((error) => console.warn("Seller payout event skipped:", error.message));
+    return withPaymentPlan(updated);
+  }
+
+  if (method === "POST" && route === "/seller-payout/pay-usdc") {
+    const { id } = await jsonBody(request);
+    if (!id) throw new ApiError("invoice id is required", 400);
+    const invoices = await readInvoices();
+    const invoice = getOwnedInvoice(invoices, id, user.id);
+    if (!invoice) throw new ApiError("Invoice not found", 404);
+    if (invoice.payment_method !== "dodo") throw new ApiError("Automatic seller payout here is only for Dodo card invoices.", 400);
+    if (invoice.status !== "Completed") throw new ApiError("Dodo payment must be completed before paying the seller.", 400);
+    if (invoice.seller_payout?.status === "seller_paid") throw new ApiError("Seller payout is already marked paid.", 400);
+
+    const sellerWallet = String(invoice.seller_wallet || invoice.seller_payout?.sellerWallet || "").trim();
+    if (!sellerWallet) throw new ApiError("Seller Solana wallet is missing. Create Dodo invoices with a seller wallet to use automatic USDC payout.", 400);
+    new PublicKey(sellerWallet);
+
+    const balance = await escrowTokenBalance();
+    if (balance.uiAmount < Number(invoice.amount)) {
+      throw new ApiError(
+        `Platform USDC treasury has ${balance.uiAmount} USDC, but this seller payout requires ${invoice.amount} USDC. Fund STABLECOIN_ESCROW_WALLET first.`,
+        400
+      );
+    }
+
+    const payout = await sendSellerPayoutUsdc({ sellerWallet, amount: invoice.amount });
+    const now = new Date().toISOString();
+    const updated = await updateInvoice(id, (current) => ({
+      ...current,
+      seller_payout: {
+        ...(current.seller_payout || {}),
+        provider: "solana_usdc",
+        status: "seller_paid",
+        amount: Number(current.amount || 0),
+        currency: current.currency || "USDC",
+        sellerWallet,
+        reference: payout.signature,
+        note: "Automatic seller payout sent from SettleFlow USDC treasury after Dodo collection.",
+        createdAt: current.seller_payout?.createdAt || now,
+        paidAt: now,
+        updatedAt: now,
+        tx: payout.signature,
+        explorerUrl: payout.explorerUrl,
+        sourceTokenAccount: payout.sourceTokenAccount,
+        destinationTokenAccount: payout.destinationTokenAccount
+      }
+    }));
+    await recordInvoiceEvent(updated, "seller_paid", `Automatic USDC seller payout sent. Tx ${payout.signature}.`).catch((error) => console.warn("Seller payout event skipped:", error.message));
+    await notifyInvoiceEvent(updated, "completed", request.url).catch((error) => console.warn("Seller payout email skipped:", error.message));
     return withPaymentPlan(updated);
   }
 

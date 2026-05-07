@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Circle, Copy, ExternalLink, Loader2, Printer, RefreshCw, Share2, Trash2 } from "lucide-react";
 import AuthModal from "../../../../components/AuthModal";
 import Navbar from "../../../../components/Navbar";
-import { createDodoCheckout, createInvoiceShareLink, deleteInvoice, getInvoice, markSellerPayoutPaid, syncDodoPayment } from "../../../../lib/api";
+import { createDodoCheckout, createInvoiceShareLink, deleteInvoice, getInvoice, paySellerWithUsdc, syncDodoPayment } from "../../../../lib/api";
 import { AUTH_CHANGED_EVENT, getStoredSession, saveSession } from "../../../../lib/authSession";
 
 const statusStyles = {
@@ -118,7 +118,7 @@ function buildTimeline(invoice) {
       label: "Seller payout",
       detail: invoice.seller_payout?.status === "seller_paid"
         ? `Seller payout marked paid${invoice.seller_payout?.reference ? ` (${invoice.seller_payout.reference})` : ""}.`
-        : "Buyer paid by card. Platform payout to seller is still pending.",
+        : "Buyer paid by card. Automatic USDC payout to seller is pending.",
       done: invoice.seller_payout?.status === "seller_paid",
       date: invoice.seller_payout?.paidAt || invoice.seller_payout?.updatedAt
     });
@@ -131,7 +131,7 @@ function buildTimeline(invoice) {
         ? isDodoInvoice
           ? invoice.seller_payout?.status === "seller_paid"
             ? "Buyer payment and seller payout completed."
-            : "Buyer payment completed. Seller payout pending."
+            : "Buyer payment completed. Automatic seller payout pending."
           : "USDC released and invoice completed."
         : isDodoInvoice
           ? "Waiting for Dodo payment completion."
@@ -266,12 +266,10 @@ export default function InvoiceDetailPage() {
     );
   }
 
-  async function markSellerPaid() {
-    const reference = window.prompt("Seller payout reference (bank transfer ID, UPI ref, crypto tx, etc.)", invoice.seller_payout?.reference || "");
-    if (reference === null) return;
+  async function paySellerAutomatically() {
     await runInvoiceAction(
-      () => markSellerPayoutPaid(invoice.id, reference),
-      () => "Seller payout marked paid."
+      () => paySellerWithUsdc(invoice.id),
+      () => "Seller paid with USDC."
     );
   }
 
@@ -433,9 +431,9 @@ export default function InvoiceDetailPage() {
                   Sync Dodo
                 </button>}
                 {paymentMethod === "dodo" && invoice.status === "Completed" && invoice.seller_payout?.status !== "seller_paid" && (
-                  <button onClick={markSellerPaid} disabled={busy} className="button-primary gap-2">
+                  <button onClick={paySellerAutomatically} disabled={busy || !invoice.seller_wallet} className="button-primary gap-2 disabled:cursor-not-allowed disabled:opacity-50">
                     {busy ? <Loader2 className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}
-                    Mark seller paid
+                    Pay seller USDC
                   </button>
                 )}
                 {paymentMethod === "usdc" && <Link href="/dashboard#create" className="button-primary">Manage USDC escrow</Link>}
@@ -468,12 +466,14 @@ export default function InvoiceDetailPage() {
                 <div className="mt-6 rounded-xl border border-orange-100 bg-orange-50 p-5 text-sm font-semibold text-orange-900/75">
                   <p className="section-kicker text-orange-700">Seller payout pipeline</p>
                   <p className="mt-3">
-                    Dodo card payments collect into the platform merchant balance. Seller payout is a separate manual payout step.
+                    Dodo card payments collect into the platform merchant balance. SettleFlow pays the seller from the configured USDC treasury wallet.
                   </p>
                   <p className="mt-2 font-black text-orange-950">
                     Status: {formatStatus(invoice.seller_payout?.status || "not_started")}
                   </p>
+                  {!invoice.seller_wallet && <p className="mt-2 font-black text-red-700">Missing seller wallet. Create Dodo invoices with a seller Solana wallet for automatic payout.</p>}
                   {invoice.seller_payout?.reference && <p className="mt-2">Reference: {invoice.seller_payout.reference}</p>}
+                  {invoice.seller_payout?.explorerUrl && <a className="mt-2 inline-flex font-black text-leaf underline" href={invoice.seller_payout.explorerUrl} target="_blank" rel="noreferrer">Seller payout tx</a>}
                   {invoice.seller_payout?.paidAt && <p className="mt-2">Paid at: {formatDate(invoice.seller_payout.paidAt)}</p>}
                 </div>
               )}

@@ -79,7 +79,7 @@ function buildTimeline(invoice) {
       label: "Seller payout",
       detail: invoice.seller_payout?.status === "seller_paid"
         ? `Seller payout completed${invoice.seller_payout?.reference ? ` (${invoice.seller_payout.reference})` : ""}.`
-        : "Platform payout to seller is pending.",
+        : "Automatic USDC payout to seller is pending.",
       done: invoice.seller_payout?.status === "seller_paid",
       date: invoice.seller_payout?.paidAt || invoice.seller_payout?.updatedAt
     });
@@ -106,7 +106,7 @@ function buildTimeline(invoice) {
       ? isDodoInvoice
         ? invoice.seller_payout?.status === "seller_paid"
           ? "Buyer payment and seller payout completed."
-          : "Buyer payment completed. Seller payout pending."
+          : "Buyer payment completed. Automatic seller payout pending."
         : "Seller payout completed."
       : isDodoInvoice
         ? "Awaiting Dodo payment completion."
@@ -180,6 +180,7 @@ export default function PublicInvoiceTracker({ token }) {
   const progress = Number(invoice?.payment_progress || 0);
   const escrowUrl = invoice?.stablecoin?.escrowExplorerUrl || explorerUrl(invoice?.stablecoin?.escrowTx);
   const releaseUrl = invoice?.stablecoin?.releaseExplorerUrl || explorerUrl(invoice?.stablecoin?.releaseTx);
+  const sellerPayoutUrl = invoice?.seller_payout?.explorerUrl || explorerUrl(invoice?.seller_payout?.reference);
   const amountLabel = useMemo(() => invoice ? formatAmount(invoice.amount, invoice.currency) : "", [invoice]);
 
   return (
@@ -252,12 +253,13 @@ export default function PublicInvoiceTracker({ token }) {
                 </p>
               </div>
 
-              {(escrowUrl || releaseUrl) && (
+              {(escrowUrl || releaseUrl || sellerPayoutUrl) && (
                 <div className="mt-6 rounded-xl border border-black/10 p-5">
                   <p className="section-kicker">Transaction Hashes</p>
                   <div className="mt-3 flex flex-wrap gap-3">
                     {escrowUrl && <a className="button-secondary gap-2" href={escrowUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Escrow tx</a>}
                     {releaseUrl && <a className="button-secondary gap-2" href={releaseUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Release tx</a>}
+                    {sellerPayoutUrl && <a className="button-secondary gap-2" href={sellerPayoutUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Seller payout tx</a>}
                   </div>
                 </div>
               )}

@@ -59,6 +59,7 @@ create table if not exists seller_payouts (
   invoice_id text not null unique references invoices(id) on delete cascade,
   seller_name text,
   seller_email text,
+  seller_wallet text,
   amount numeric(18, 6) not null default 0,
   currency text not null default 'USDC',
   provider text not null default 'manual',
