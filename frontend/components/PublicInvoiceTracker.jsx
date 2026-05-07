@@ -51,6 +51,8 @@ function Pill({ children, className }) {
 function buildTimeline(invoice) {
   const paymentStatus = String(invoice.payment?.status || "").toLowerCase();
   const dodoPaid = ["succeeded", "payment_succeeded", "paid", "completed", "captured"].includes(paymentStatus);
+  const paymentMethod = invoice.payment_method || "usdc";
+  const isDodoInvoice = paymentMethod === "dodo";
   const steps = [
     {
       label: "Invoice created",
@@ -64,32 +66,41 @@ function buildTimeline(invoice) {
       done: invoice.escrow_enabled !== false,
       date: invoice.createdAt
     },
-    {
-      label: "Upfront USDC funded",
-      detail: `${formatAmount(invoice.upfront_amount, invoice.currency)} ${invoice.upfront_paid ? "funded" : "pending"}.`,
-      done: Boolean(invoice.upfront_paid),
-      date: invoice.funded_at
-    },
-    {
-      label: "Remaining USDC funded",
-      detail: `${formatAmount(invoice.remaining_amount, invoice.currency)} ${invoice.remaining_paid ? "funded" : "pending"}.`,
-      done: Boolean(invoice.remaining_paid),
-      date: invoice.remaining_paid ? invoice.funded_at : null
-    }
   ];
 
-  if (invoice.payment_method === "dodo") {
+  if (isDodoInvoice) {
     steps.push({
       label: "Dodo card payment",
       detail: `Card checkout ${formatStatus(invoice.payment?.status)}.`,
       done: dodoPaid,
       date: invoice.payment?.updatedAt || invoice.payment?.createdAt
     });
+  } else {
+    steps.push(
+      {
+        label: "Upfront USDC funded",
+        detail: `${formatAmount(invoice.upfront_amount, invoice.currency)} ${invoice.upfront_paid ? "funded" : "pending"}.`,
+        done: Boolean(invoice.upfront_paid),
+        date: invoice.funded_at
+      },
+      {
+        label: "Remaining USDC funded",
+        detail: `${formatAmount(invoice.remaining_amount, invoice.currency)} ${invoice.remaining_paid ? "funded" : "pending"}.`,
+        done: Boolean(invoice.remaining_paid),
+        date: invoice.remaining_paid ? invoice.funded_at : null
+      }
+    );
   }
 
   steps.push({
     label: "Funds released",
-    detail: invoice.status === "Completed" || invoice.status === "released" ? "Seller payout completed." : "Awaiting buyer release.",
+    detail: invoice.status === "Completed" || invoice.status === "released"
+      ? isDodoInvoice
+        ? "Dodo payment completed and invoice settled."
+        : "Seller payout completed."
+      : isDodoInvoice
+        ? "Awaiting Dodo payment completion."
+        : "Awaiting buyer release.",
     done: invoice.status === "Completed" || invoice.status === "released",
     date: invoice.completed_at
   });

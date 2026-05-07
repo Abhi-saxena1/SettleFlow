@@ -57,13 +57,19 @@ function Pill({ children, className }) {
 function buildTimeline(invoice) {
   const paymentStatus = String(invoice.payment?.status || "").toLowerCase();
   const dodoPaid = ["succeeded", "paid", "completed", "captured"].includes(paymentStatus);
-  const hasDodoActivity = Boolean(invoice.payment?.checkoutUrl || invoice.payment?.sessionId || dodoPaid);
+  const paymentMethod = invoice.payment_method || "usdc";
+  const isDodoInvoice = paymentMethod === "dodo";
+  const isUsdcInvoice = paymentMethod === "usdc";
+  const hasDodoActivity = isDodoInvoice && Boolean(invoice.payment?.checkoutUrl || invoice.payment?.sessionId || dodoPaid);
   const hasUsdcActivity = Boolean(
-    invoice.stablecoin?.escrowTx ||
-    invoice.stablecoin?.releaseTx ||
-    invoice.upfront_paid ||
-    invoice.remaining_paid ||
-    invoice.stablecoin?.status === "released"
+    isUsdcInvoice &&
+    (
+      invoice.stablecoin?.escrowTx ||
+      invoice.stablecoin?.releaseTx ||
+      invoice.upfront_paid ||
+      invoice.remaining_paid ||
+      invoice.stablecoin?.status === "released"
+    )
   );
 
   const steps = [
@@ -81,7 +87,7 @@ function buildTimeline(invoice) {
     },
   ];
 
-  if (hasUsdcActivity || !hasDodoActivity) {
+  if (isUsdcInvoice || hasUsdcActivity) {
     steps.push(
       {
         label: "Upfront USDC locked",
@@ -112,7 +118,13 @@ function buildTimeline(invoice) {
   steps.push(
     {
       label: "Settlement completed",
-      detail: invoice.status === "Completed" ? "Funds released and invoice completed." : "Waiting for final release.",
+      detail: invoice.status === "Completed"
+        ? isDodoInvoice
+          ? "Dodo payment completed and invoice settled."
+          : "USDC released and invoice completed."
+        : isDodoInvoice
+          ? "Waiting for Dodo payment completion."
+          : "Waiting for final release.",
       done: invoice.status === "Completed",
       date: invoice.completed_at
     }
