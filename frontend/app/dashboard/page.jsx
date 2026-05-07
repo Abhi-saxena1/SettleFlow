@@ -3,12 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, RefreshCw } from "lucide-react";
-import { Connection, PublicKey, Transaction } from "@solana/web3.js";
-import {
-  createAssociatedTokenAccountInstruction,
-  createTransferCheckedInstruction,
-  getAssociatedTokenAddress
-} from "@solana/spl-token";
 import AuthModal from "../../components/AuthModal";
 import InvoiceForm from "../../components/InvoiceForm";
 import InvoiceTable from "../../components/InvoiceTable";
@@ -17,14 +11,13 @@ import {
   createDodoCheckout,
   deleteInvoice,
   fundDodoEscrowFromTreasury,
-  fundStablecoinEscrow,
-  getStablecoinConfig,
   importInvoices,
   getInvoices,
-  releaseStablecoinEscrow,
+  releaseAnchorEscrow,
   syncDodoPayment,
   withdrawFreelancerEscrow
 } from "../../lib/api";
+import { PAYMENT_STATES, normalizePaymentState, paymentStateRank } from "../../lib/paymentStates";
 import {
   AUTH_CHANGED_EVENT,
   getCachedInvoices,
@@ -56,18 +49,7 @@ export default function DashboardPage() {
   }
 
   function invoiceStateRank(invoice) {
-    const paymentStatus = String(invoice.payment?.status || "").toLowerCase();
-
-    if (invoice.status === "Completed" || ["succeeded", "paid", "completed", "captured"].includes(paymentStatus)) {
-      return invoice.seller_payout?.status === "seller_paid" || invoice.payment_method !== "dodo" ? 5 : 3;
-    }
-
-    if (invoice.status === "Escrow Funded") return 4;
-    if (invoice.status === "Fiat Paid") return 3;
-    if (invoice.status === "Funded") return 4;
-    if (invoice.status === "Partially Funded") return 3;
-    if (paymentStatus === "checkout_created") return 2;
-    return 1;
+    return paymentStateRank(invoice.status);
   }
 
   function mergeInvoiceLists(...lists) {
@@ -108,7 +90,7 @@ export default function DashboardPage() {
   }
 
   function buildDashboardAnalytics(invoiceList) {
-    const completedInvoices = invoiceList.filter((invoice) => invoice.status === "Completed");
+    const completedInvoices = invoiceList.filter((invoice) => normalizePaymentState(invoice.status) === PAYMENT_STATES.WITHDRAWN);
     const totalSettled = completedInvoices.reduce((sum, invoice) => sum + Number(invoice.amount || 0), 0);
     const durations = completedInvoices
       .map((invoice) => {
@@ -178,7 +160,7 @@ export default function DashboardPage() {
         });
         const paymentStatus = String(updated.payment?.status || "").toLowerCase();
 
-        if (updated.status === "Completed" || ["succeeded", "paid", "completed", "captured"].includes(paymentStatus)) {
+        if (normalizePaymentState(updated.status) === PAYMENT_STATES.FIAT_PAID || ["succeeded", "paid", "completed", "captured"].includes(paymentStatus)) {
           return updated;
         }
 
@@ -412,10 +394,6 @@ export default function DashboardPage() {
     }
   }
 
-  function getSolanaProvider() {
-    return window.phantom?.solana || window.solana || window.solflare || window.backpack?.solana || null;
-  }
-
   function formatWalletError(error) {
     if (error?.message) {
       return error.message;
@@ -428,155 +406,8 @@ export default function DashboardPage() {
     return "USDC transfer failed. Check that your wallet is on Solana Devnet and has devnet SOL plus devnet USDC.";
   }
 
-  async function waitForSolanaSignature(connection, signature) {
-    for (let attempt = 0; attempt < 45; attempt += 1) {
-      const { value } = await connection.getSignatureStatuses([signature], { searchTransactionHistory: true });
-      const status = value?.[0];
-
-      if (status?.err) {
-        throw new Error(`Solana transaction failed: ${JSON.stringify(status.err)}`);
-      }
-
-      if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") {
-        return status;
-      }
-
-      await new Promise((resolve) => window.setTimeout(resolve, 2000));
-    }
-
-    throw new Error(
-      `Transaction was sent but not confirmed yet. Signature: ${signature}. Wait a minute, click Refresh, then check Solana Explorer if needed.`
-    );
-  }
-
-  async function startStablecoinFunding(invoice, paymentStage = "full") {
-    if (!requireLogin()) {
-      return;
-    }
-
-    setBusyId(invoice.id);
-    setError("");
-    setNotice("");
-
-    try {
-      const provider = getSolanaProvider();
-      if (!provider) {
-        throw new Error("No Solana wallet detected. Install or enable Phantom/Solflare and connect it in this browser.");
-      }
-
-      const config = await getStablecoinConfig();
-      if (!config.configured) {
-        throw new Error("Solana USDC is not configured. Add STABLECOIN_MINT_ADDRESS and STABLECOIN_ESCROW_WALLET to backend/.env.");
-      }
-
-      const connection = new Connection(config.rpcUrl, "confirmed");
-      const connectResponse = await provider.connect();
-      const buyerPublicKey = new PublicKey(connectResponse.publicKey.toString());
-      const mint = new PublicKey(config.mint);
-      const escrowOwner = new PublicKey(config.escrowWallet);
-      const buyerTokenAccount = await getAssociatedTokenAddress(mint, buyerPublicKey);
-      const escrowTokenAccount = await getAssociatedTokenAddress(mint, escrowOwner);
-      const stageAmount = paymentStage === "upfront"
-        ? Number(invoice.upfront_amount)
-        : paymentStage === "remaining"
-          ? Number(invoice.remaining_amount)
-          : Number(invoice.amount);
-      const amount = BigInt(Math.round(stageAmount * 10 ** Number(config.decimals)));
-      const transaction = new Transaction();
-      const buyerTokenAccountInfo = await connection.getParsedAccountInfo(buyerTokenAccount);
-      const solBalance = await connection.getBalance(buyerPublicKey);
-
-      if (solBalance <= 0) {
-        throw new Error("Your wallet has no devnet SOL for transaction fees. Switch Phantom to Devnet and request an airdrop.");
-      }
-
-      if (!buyerTokenAccountInfo.value) {
-        throw new Error(`Your wallet does not have a devnet ${config.symbol} token account for mint ${config.mint}. Get devnet USDC first.`);
-      }
-
-      const parsedTokenAccount = buyerTokenAccountInfo.value.data?.parsed?.info;
-      const tokenAmount = Number(parsedTokenAccount?.tokenAmount?.uiAmountString || 0);
-
-      if (tokenAmount < stageAmount) {
-        throw new Error(`Insufficient devnet ${config.symbol}. Need ${stageAmount}, wallet has ${tokenAmount}.`);
-      }
-
-      const escrowAccountInfo = await connection.getAccountInfo(escrowTokenAccount);
-
-      if (!escrowAccountInfo) {
-        transaction.add(
-          createAssociatedTokenAccountInstruction(
-            buyerPublicKey,
-            escrowTokenAccount,
-            escrowOwner,
-            mint
-          )
-        );
-      }
-
-      transaction.add(
-        createTransferCheckedInstruction(
-          buyerTokenAccount,
-          mint,
-          escrowTokenAccount,
-          buyerPublicKey,
-          amount,
-          Number(config.decimals)
-        )
-      );
-
-      const latestBlockhash = await connection.getLatestBlockhash("confirmed");
-      transaction.feePayer = buyerPublicKey;
-      transaction.recentBlockhash = latestBlockhash.blockhash;
-
-      const simulation = await connection.simulateTransaction(transaction);
-      if (simulation.value.err) {
-        throw new Error(`Solana simulation failed: ${JSON.stringify(simulation.value.err)}`);
-      }
-
-      const { signature } = provider.signAndSendTransaction
-        ? await provider.signAndSendTransaction(transaction)
-        : { signature: await connection.sendRawTransaction((await provider.signTransaction(transaction)).serialize()) };
-
-      setNotice(`USDC transaction sent. Waiting for devnet confirmation: ${signature.slice(0, 8)}...`);
-      await waitForSolanaSignature(connection, signature);
-      const updated = await fundStablecoinEscrow(invoice.id, buyerPublicKey.toBase58(), signature, paymentStage);
-      setInvoices((current) => {
-        const next = current.map((item) => (item.id === invoice.id ? updated : item));
-        saveCachedInvoices(next, session);
-        return next;
-      });
-      setNotice(`${stageAmount.toLocaleString()} USDC locked in escrow. Tx: ${signature.slice(0, 8)}...`);
-    } catch (err) {
-      setError(formatWalletError(err));
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   async function startStablecoinRelease(id) {
-    if (!requireLogin()) {
-      return;
-    }
-
-    setError("");
-
-    try {
-      const invoice = invoices.find((item) => item.id === id);
-      const sellerWallet = (invoice?.seller_wallet || invoice?.stablecoin?.sellerWallet || "").trim();
-      if (!sellerWallet) {
-        throw new Error("This invoice does not have a seller wallet saved. Create the invoice with a seller Solana wallet before releasing USDC.");
-      }
-
-      new PublicKey(sellerWallet);
-      await runAction(id, (invoiceId) => releaseStablecoinEscrow(invoiceId, sellerWallet));
-    } catch (err) {
-      setError(
-        err.message?.includes("Non-base58")
-          ? "Enter a valid Solana wallet address, not a MetaMask/EVM address or text from another page."
-          : formatWalletError(err)
-      );
-    }
+    await runAction(id, releaseAnchorEscrow);
   }
 
   async function fundDodoEscrow(id) {
@@ -681,7 +512,6 @@ export default function DashboardPage() {
                 onDelete={removeInvoice}
                 onDodoCheckout={startDodoCheckout}
                 onSyncPayment={(id) => runAction(id, syncDodoPayment)}
-                onFundStablecoin={startStablecoinFunding}
                 onReleaseStablecoin={startStablecoinRelease}
                 onFundDodoEscrow={fundDodoEscrow}
                 onWithdrawFreelancer={withdrawDodoEscrow}

@@ -64,37 +64,9 @@ export function createInvoice(payload) {
   });
 }
 
-export function fundInvoice(id) {
-  return request("/invoice/fund", {
-    method: "POST",
-    body: JSON.stringify({ id })
-  });
-}
-
-export function releaseInvoice(id) {
-  return request("/invoice/release", {
-    method: "POST",
-    body: JSON.stringify({ id })
-  });
-}
-
 export function deleteInvoice(id) {
   return request(`/invoice/${id}`, {
     method: "DELETE"
-  });
-}
-
-export function payUpfront(id) {
-  return request("/invoice/pay-upfront", {
-    method: "POST",
-    body: JSON.stringify({ id })
-  });
-}
-
-export function payRemaining(id) {
-  return request("/invoice/pay-remaining", {
-    method: "POST",
-    body: JSON.stringify({ id })
   });
 }
 
@@ -119,20 +91,6 @@ export function syncDodoPayment(id) {
   }).then((result) => result.invoice || result);
 }
 
-export function markSellerPayoutPaid(id, reference = "", note = "") {
-  return request("/seller-payout/mark-paid", {
-    method: "POST",
-    body: JSON.stringify({ id, reference, note })
-  });
-}
-
-export function paySellerWithUsdc(id) {
-  return request("/seller-payout/pay-usdc", {
-    method: "POST",
-    body: JSON.stringify({ id })
-  });
-}
-
 export function fundDodoEscrowFromTreasury(id) {
   return request("/treasury/fund-escrow", {
     method: "POST",
@@ -147,22 +105,15 @@ export function withdrawFreelancerEscrow(id) {
   });
 }
 
+export function releaseAnchorEscrow(id) {
+  return request("/escrow/release", {
+    method: "POST",
+    body: JSON.stringify({ id })
+  });
+}
+
 export function getStablecoinConfig() {
   return request("/stablecoin/config");
-}
-
-export function fundStablecoinEscrow(id, buyerWallet, signature, paymentStage = "full") {
-  return request("/stablecoin/fund", {
-    method: "POST",
-    body: JSON.stringify({ id, buyerWallet, signature, paymentStage })
-  });
-}
-
-export function releaseStablecoinEscrow(id, sellerWallet) {
-  return request("/stablecoin/release", {
-    method: "POST",
-    body: JSON.stringify({ id, sellerWallet })
-  });
 }
 
 export function analyzeRisk(payload) {

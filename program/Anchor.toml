@@ -3,7 +3,10 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-settleflow_escrow = "Fg6PaFpoGXkYsidMpWxTWq3nx5pYQ5zL2q6T7qWtXrJ4"
+settleflow_escrow = "6ExqVZTvHUERDa7JjY8kHs1NDfZD1woAN4ovkmSsrePK"
+
+[programs.devnet]
+settleflow_escrow = "6ExqVZTvHUERDa7JjY8kHs1NDfZD1woAN4ovkmSsrePK"
 
 [registry]
 url = "https://api.apr.dev"

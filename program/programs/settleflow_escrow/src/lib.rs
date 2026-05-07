@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
 
-declare_id!("Fg6PaFpoGXkYsidMpWxTWq3nx5pYQ5zL2q6T7qWtXrJ4");
+declare_id!("6ExqVZTvHUERDa7JjY8kHs1NDfZD1woAN4ovkmSsrePK");
 
 #[program]
 pub mod settleflow_escrow {
@@ -23,15 +23,19 @@ pub mod settleflow_escrow {
         escrow.escrow_token_account = ctx.accounts.escrow_token_account.key();
         escrow.amount = amount;
         escrow.funded_amount = 0;
-        escrow.released = false;
+        escrow.status = EscrowStatus::Initialized;
         escrow.disputed = false;
+        escrow.created_at = Clock::get()?.unix_timestamp;
+        escrow.released_at = 0;
+        escrow.withdrawn_at = 0;
         escrow.bump = ctx.bumps.escrow;
         Ok(())
     }
 
     pub fn fund_escrow(ctx: Context<FundEscrow>, amount: u64) -> Result<()> {
         let escrow = &mut ctx.accounts.escrow;
-        require!(!escrow.released, EscrowError::AlreadyReleased);
+        require!(escrow.status != EscrowStatus::Released, EscrowError::AlreadyReleased);
+        require!(escrow.status != EscrowStatus::Withdrawn, EscrowError::AlreadyWithdrawn);
         require!(!escrow.disputed, EscrowError::EscrowDisputed);
         require!(amount > 0, EscrowError::InvalidAmount);
         require!(
@@ -49,14 +53,29 @@ pub mod settleflow_escrow {
         token::transfer_checked(cpi_context, amount, ctx.accounts.mint.decimals)?;
 
         escrow.funded_amount = escrow.funded_amount.saturating_add(amount);
+        if escrow.funded_amount >= escrow.amount {
+            escrow.status = EscrowStatus::Funded;
+        }
         Ok(())
     }
 
-    pub fn release_funds(ctx: Context<ReleaseFunds>) -> Result<()> {
+    pub fn release_escrow(ctx: Context<ReleaseEscrow>) -> Result<()> {
         let escrow = &mut ctx.accounts.escrow;
-        require!(!escrow.released, EscrowError::AlreadyReleased);
+        require!(escrow.status != EscrowStatus::Released, EscrowError::AlreadyReleased);
+        require!(escrow.status != EscrowStatus::Withdrawn, EscrowError::AlreadyWithdrawn);
         require!(!escrow.disputed, EscrowError::EscrowDisputed);
         require!(escrow.funded_amount >= escrow.amount, EscrowError::NotFullyFunded);
+
+        escrow.status = EscrowStatus::Released;
+        escrow.released_at = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
+
+    pub fn withdraw_funds(ctx: Context<WithdrawFunds>) -> Result<()> {
+        let escrow_account_info = ctx.accounts.escrow.to_account_info();
+        let escrow = &mut ctx.accounts.escrow;
+        require!(escrow.status == EscrowStatus::Released, EscrowError::NotReleased);
+        require!(!escrow.disputed, EscrowError::EscrowDisputed);
 
         let invoice_id = escrow.invoice_id.as_bytes();
         let signer_seeds: &[&[&[u8]]] = &[&[
@@ -70,7 +89,7 @@ pub mod settleflow_escrow {
             from: ctx.accounts.escrow_token_account.to_account_info(),
             mint: ctx.accounts.mint.to_account_info(),
             to: ctx.accounts.seller_token_account.to_account_info(),
-            authority: ctx.accounts.escrow.to_account_info(),
+            authority: escrow_account_info,
         };
         let cpi_context = CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
@@ -79,14 +98,17 @@ pub mod settleflow_escrow {
         );
         token::transfer_checked(cpi_context, escrow.funded_amount, ctx.accounts.mint.decimals)?;
 
-        escrow.released = true;
+        escrow.status = EscrowStatus::Withdrawn;
+        escrow.withdrawn_at = Clock::get()?.unix_timestamp;
         Ok(())
     }
 
     pub fn dispute(ctx: Context<DisputeEscrow>) -> Result<()> {
         let escrow = &mut ctx.accounts.escrow;
-        require!(!escrow.released, EscrowError::AlreadyReleased);
+        require!(escrow.status != EscrowStatus::Released, EscrowError::AlreadyReleased);
+        require!(escrow.status != EscrowStatus::Withdrawn, EscrowError::AlreadyWithdrawn);
         escrow.disputed = true;
+        escrow.status = EscrowStatus::Disputed;
         Ok(())
     }
 }
@@ -140,16 +162,27 @@ pub struct FundEscrow<'info> {
 }
 
 #[derive(Accounts)]
-pub struct ReleaseFunds<'info> {
+pub struct ReleaseEscrow<'info> {
     #[account(
         mut,
-        has_one = buyer,
+        has_one = buyer
+    )]
+    pub escrow: Account<'info, EscrowAccount>,
+    /// Buyer approves delivery and marks funds releasable. Seller address is read from escrow state.
+    pub buyer: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct WithdrawFunds<'info> {
+    #[account(
+        mut,
         has_one = mint,
         has_one = escrow_token_account
     )]
     pub escrow: Account<'info, EscrowAccount>,
-    /// Buyer approves delivery and triggers release. Seller address is read from escrow state.
-    pub buyer: Signer<'info>,
+    /// Seller wallet is stored in escrow state. This account is validated against seller_token_account.
+    #[account(constraint = seller.key() == escrow.seller)]
+    pub seller: SystemAccount<'info>,
     pub mint: Account<'info, Mint>,
     #[account(mut)]
     pub escrow_token_account: Account<'info, TokenAccount>,
@@ -180,9 +213,21 @@ pub struct EscrowAccount {
     pub escrow_token_account: Pubkey,
     pub amount: u64,
     pub funded_amount: u64,
-    pub released: bool,
+    pub status: EscrowStatus,
     pub disputed: bool,
+    pub created_at: i64,
+    pub released_at: i64,
+    pub withdrawn_at: i64,
     pub bump: u8,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
+pub enum EscrowStatus {
+    Initialized,
+    Funded,
+    Released,
+    Withdrawn,
+    Disputed,
 }
 
 #[error_code]
@@ -197,6 +242,10 @@ pub enum EscrowError {
     NotFullyFunded,
     #[msg("Escrow has already been released.")]
     AlreadyReleased,
+    #[msg("Escrow has already been withdrawn.")]
+    AlreadyWithdrawn,
+    #[msg("Escrow has not been released yet.")]
+    NotReleased,
     #[msg("Escrow is disputed.")]
     EscrowDisputed,
 }

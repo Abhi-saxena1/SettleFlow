@@ -6,12 +6,13 @@ import DodoPayments from "dodopayments";
 import { nanoid } from "nanoid";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
-import { Connection, Keypair, PublicKey, sendAndConfirmTransaction, Transaction } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, sendAndConfirmTransaction, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import {
   createAssociatedTokenAccountInstruction,
-  createTransferCheckedInstruction,
-  getAssociatedTokenAddress
+  getAssociatedTokenAddress,
+  TOKEN_PROGRAM_ID
 } from "@solana/spl-token";
+import { PAYMENT_STATES, canTransitionPaymentState, normalizePaymentState } from "../paymentStates";
 
 const DATA_DIR = process.env.SETTLEFLOW_DATA_DIR || (process.env.VERCEL ? "/tmp/settleflow" : path.join(process.cwd(), "data"));
 const INVOICES_FILE = path.join(DATA_DIR, "invoices.json");
@@ -65,6 +66,26 @@ class ApiError extends Error {
     super(message);
     this.status = status;
   }
+}
+
+function transitionInvoiceStatus(invoice, nextStatus, patch = {}) {
+  const currentStatus = normalizePaymentState(invoice.status);
+  const normalizedNext = normalizePaymentState(nextStatus);
+
+  if (!canTransitionPaymentState(currentStatus, normalizedNext)) {
+    throw new ApiError(`Invalid payment state transition: ${currentStatus} -> ${normalizedNext}`, 409);
+  }
+
+  return {
+    ...invoice,
+    ...patch,
+    status: normalizedNext,
+    status_updated_at: new Date().toISOString()
+  };
+}
+
+function isSettledInvoice(invoice) {
+  return normalizePaymentState(invoice.status) === PAYMENT_STATES.WITHDRAWN;
 }
 
 async function readJson(file, fallback) {
@@ -181,22 +202,21 @@ function toInvoiceRecord(invoice) {
 }
 
 function fromInvoiceRecord(record) {
-  return {
+  const invoice = {
     ...(record.data || {}),
     id: record.id,
     ownerUserId: record.owner_user_id,
     createdAt: record.data?.createdAt || record.created_at
   };
+
+  return {
+    ...invoice,
+    status: normalizePaymentState(invoice.status)
+  };
 }
 
 function escrowStatusFromInvoice(invoice) {
-  if (invoice.status === "Completed") return "completed";
-  if (invoice.status === "Escrow Funded") return "fully_funded";
-  if (invoice.status === "Fiat Paid") return "awaiting_release";
-  if (invoice.status === "Funded") return "fully_funded";
-  if (invoice.status === "Partially Funded") return "partially_funded";
-  if (invoice.status === "Disputed") return "disputed";
-  return "created";
+  return normalizePaymentState(invoice.status);
 }
 
 function toEscrowInvoiceRecord(invoice) {
@@ -234,7 +254,7 @@ async function mirrorEscrowInvoice(invoice) {
     console.warn("Escrow invoice realtime mirror skipped:", supabaseErrorMessage(error));
   }
 
-  if (planned.payment_method === "dodo" && planned.seller_payout?.status && planned.seller_payout.status !== "not_required") {
+  if (planned.payment_method === "dodo" && planned.seller_payout?.status && normalizePaymentState(planned.seller_payout.status) !== PAYMENT_STATES.DRAFT) {
     const { error: payoutError } = await supabase
       .from("seller_payouts")
       .upsert({
@@ -242,9 +262,9 @@ async function mirrorEscrowInvoice(invoice) {
         seller_name: planned.seller,
         seller_email: planned.seller_email || null,
         seller_wallet: planned.seller_wallet || planned.seller_payout.sellerWallet || null,
-        amount: planned.seller_payout.amount || (planned.seller_payout.status === "not_started" ? 0 : planned.amount),
+        amount: planned.seller_payout.amount || (normalizePaymentState(planned.seller_payout.status) === PAYMENT_STATES.DRAFT ? 0 : planned.amount),
         currency: planned.seller_payout.currency || planned.currency || "USDC",
-        provider: planned.seller_payout.provider || "manual",
+        provider: planned.seller_payout.provider || "anchor_usdc",
         status: planned.seller_payout.status,
         reference: planned.seller_payout.reference || null,
         note: planned.seller_payout.explorerUrl
@@ -308,12 +328,12 @@ function publicInvoice(invoice) {
     risk: safeInvoice.risk,
     payment: {
       provider: safeInvoice.payment?.provider || "dodo",
-      status: safeInvoice.payment?.status || "not_started",
+      status: safeInvoice.payment?.status || PAYMENT_STATES.DRAFT,
       updatedAt: safeInvoice.payment?.updatedAt || null,
       createdAt: safeInvoice.payment?.createdAt || null
     },
     seller_payout: {
-      status: safeInvoice.seller_payout?.status || "not_required",
+      status: safeInvoice.seller_payout?.status || PAYMENT_STATES.DRAFT,
       amount: safeInvoice.seller_payout?.amount || 0,
       reference: safeInvoice.seller_payout?.reference || null,
       explorerUrl: safeInvoice.seller_payout?.explorerUrl || null,
@@ -321,7 +341,7 @@ function publicInvoice(invoice) {
       updatedAt: safeInvoice.seller_payout?.updatedAt || null
     },
     fiat_escrow: {
-      status: safeInvoice.fiat_escrow?.status || "not_required",
+      status: safeInvoice.fiat_escrow?.status || PAYMENT_STATES.DRAFT,
       treasuryTx: safeInvoice.fiat_escrow?.treasuryTx || null,
       treasuryExplorerUrl: safeInvoice.fiat_escrow?.treasuryExplorerUrl || null,
       withdrawalTx: safeInvoice.fiat_escrow?.withdrawalTx || null,
@@ -332,7 +352,7 @@ function publicInvoice(invoice) {
     stablecoin: {
       chain: safeInvoice.stablecoin?.chain,
       token: safeInvoice.stablecoin?.token,
-      status: safeInvoice.stablecoin?.status || "not_started",
+      status: normalizePaymentState(safeInvoice.stablecoin?.status || safeInvoice.status),
       escrowTx: safeInvoice.stablecoin?.escrowTx || null,
       escrowExplorerUrl: safeInvoice.stablecoin?.escrowExplorerUrl || null,
       releaseTx: safeInvoice.stablecoin?.releaseTx || null,
@@ -445,7 +465,11 @@ async function readInvoices() {
     }
   }
 
-  return readJson(INVOICES_FILE, []);
+  const invoices = await readJson(INVOICES_FILE, []);
+  return invoices.map((invoice) => ({
+    ...invoice,
+    status: normalizePaymentState(invoice.status)
+  }));
 }
 
 async function writeInvoices(invoices) {
@@ -751,12 +775,14 @@ async function notifyInvoiceEvent(invoice, event, requestUrl) {
   const subjects = {
     created: `SettleFlow invoice ${invoice.id} created`,
     locked: `SettleFlow invoice ${invoice.id} escrow funded`,
-    completed: `SettleFlow invoice ${invoice.id} settled`
+    released: `SettleFlow invoice ${invoice.id} escrow released`,
+    withdrawn: `SettleFlow invoice ${invoice.id} seller withdrawal complete`
   };
   const previews = {
     created: `${invoice.seller} created a ${amount} invoice for ${invoice.buyer}. Preferred payment method: ${invoice.payment_method === "dodo" ? "Dodo card checkout" : "USDC escrow"}.`,
     locked: `${amount} is now locked for invoice ${invoice.id}.`,
-    completed: `${invoice.id} has been completed and settled.`
+    released: `${invoice.id} has been released from escrow and is ready for seller withdrawal.`,
+    withdrawn: `${invoice.id} funds were withdrawn from the Anchor escrow vault.`
   };
 
   const result = await sendSettleFlowEmail({
@@ -821,12 +847,21 @@ function getPaymentPlan(invoice) {
   const upfrontPercentage = normalizeUpfrontPercentage(invoice.upfront_percentage);
   const upfrontAmount = Number(((amount * upfrontPercentage) / 100).toFixed(2));
   const remainingAmount = Number((amount - upfrontAmount).toFixed(2));
-  const upfrontPaid = Boolean(invoice.upfront_paid);
-  const remainingPaid = Boolean(invoice.remaining_paid || invoice.status === "Completed");
-  const fiatPaidAmount = invoice.payment_method === "dodo" && ["Fiat Paid", "Escrow Funded", "Completed"].includes(invoice.status)
+  const state = normalizePaymentState(invoice.status);
+  const fiatOrEscrowProgress = [
+    PAYMENT_STATES.FIAT_PAID,
+    PAYMENT_STATES.TREASURY_FUNDING_PENDING,
+    PAYMENT_STATES.ESCROW_FUNDED,
+    PAYMENT_STATES.WORK_SUBMITTED,
+    PAYMENT_STATES.RELEASE_PENDING,
+    PAYMENT_STATES.RELEASED,
+    PAYMENT_STATES.WITHDRAWN
+  ].includes(state)
     ? amount
     : 0;
-  const paidAmount = Math.max(Number((upfrontPaid ? upfrontAmount : 0) + (remainingPaid ? remainingAmount : 0)), fiatPaidAmount);
+  const upfrontPaid = fiatOrEscrowProgress > 0;
+  const remainingPaid = fiatOrEscrowProgress > 0;
+  const paidAmount = fiatOrEscrowProgress;
 
   return {
     upfront_percentage: upfrontPercentage,
@@ -843,10 +878,10 @@ function stablecoinConfig() {
   const signer = escrowKeypair();
   const treasurySigner = treasuryKeypair();
   return {
-    rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
+    rpcUrl: process.env.SOLANA_RPC_URL || process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com",
     chain: process.env.STABLECOIN_CHAIN || "solana-devnet",
     symbol: process.env.STABLECOIN_SYMBOL || "USDC",
-    mint: process.env.STABLECOIN_MINT_ADDRESS || "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+    mint: process.env.USDC_MINT || process.env.STABLECOIN_MINT_ADDRESS || "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
     escrowWallet: process.env.STABLECOIN_ESCROW_WALLET || signer?.publicKey.toBase58() || "",
     treasuryWallet: process.env.STABLECOIN_TREASURY_WALLET || process.env.TREASURY_WALLET || treasurySigner?.publicKey.toBase58() || "",
     decimals: Number(process.env.STABLECOIN_DECIMALS || 6)
@@ -857,12 +892,12 @@ function withPaymentPlan(invoice) {
   const amount = Number(invoice.amount || 0);
   const config = stablecoinConfig();
   const sellerPayout = invoice.seller_payout || {};
-  const defaultPayoutStatus = invoice.payment_method === "dodo" ? "not_started" : "not_required";
+  const defaultPayoutStatus = PAYMENT_STATES.DRAFT;
   return {
     ...invoice,
     amount,
     currency: invoice.currency || "USDC",
-    status: invoice.status || "Pending",
+    status: normalizePaymentState(invoice.status),
     buyer: invoice.buyer || "Unknown buyer",
     seller: invoice.seller || "Unknown seller",
     buyer_email: invoice.buyer_email || "",
@@ -877,7 +912,7 @@ function withPaymentPlan(invoice) {
     share_token: invoice.share_token || invoice.tracking_token || "",
     tracking_token: invoice.tracking_token || invoice.share_token || "",
     owner_email: invoice.owner_email || "",
-    payment_method: invoice.payment_method || "usdc",
+    payment_method: "dodo",
     risk: invoice.risk || {
       risk_score: 0,
       risk_level: "Low",
@@ -885,14 +920,14 @@ function withPaymentPlan(invoice) {
     },
     payment: invoice.payment || {
       provider: "dodo",
-      status: "not_started",
+      status: PAYMENT_STATES.DRAFT,
       sessionId: null,
       checkoutUrl: null,
       paymentId: null,
       mode: "unconfigured"
     },
     seller_payout: {
-      provider: sellerPayout.provider || "manual",
+      provider: sellerPayout.provider || "anchor_usdc",
       status: sellerPayout.status || defaultPayoutStatus,
       amount: Number(sellerPayout.amount || 0),
       currency: sellerPayout.currency || "USDC",
@@ -911,14 +946,14 @@ function withPaymentPlan(invoice) {
       chain: config.chain,
       token: config.symbol,
       mint: config.mint,
-      status: "not_started",
+      status: PAYMENT_STATES.DRAFT,
       amount,
       escrowTx: null,
       releaseTx: null,
-      mode: "real_spl"
+      mode: "anchor_pda_vault"
     },
     fiat_escrow: invoice.fiat_escrow || {
-      status: invoice.payment_method === "dodo" ? "fiat_payment_pending" : "not_required",
+      status: PAYMENT_STATES.DRAFT,
       treasuryTx: null,
       withdrawalTx: null,
       fundedAt: null,
@@ -930,7 +965,7 @@ function withPaymentPlan(invoice) {
 }
 
 function buildAnalytics(invoices) {
-  const completed = invoices.filter((invoice) => invoice.status === "Completed");
+  const completed = invoices.filter(isSettledInvoice);
   const totalSettled = completed.reduce((sum, invoice) => sum + Number(invoice.amount || 0), 0);
   const durations = completed
     .map((invoice) => {
@@ -1002,15 +1037,14 @@ function applyDodoPaymentStatus(invoice, paymentStatus, data = {}) {
   const now = new Date().toISOString();
   const existingPayout = invoice.seller_payout || {};
   const existingFiatEscrow = invoice.fiat_escrow || {};
-  const nextInvoiceStatus = paid
-    ? ["Escrow Funded", "Completed"].includes(invoice.status)
-      ? invoice.status
-      : "Fiat Paid"
-    : invoice.status;
+  const currentStatus = normalizePaymentState(invoice.status);
+  const nextInvoiceStatus = paid && canTransitionPaymentState(currentStatus, PAYMENT_STATES.FIAT_PAID)
+    ? PAYMENT_STATES.FIAT_PAID
+    : currentStatus;
   const nextPayoutStatus = paid
-    ? ["seller_paid", "escrow_funded"].includes(existingPayout.status)
+    ? ["withdrawn", "released", "escrow_funded"].includes(existingPayout.status)
       ? existingPayout.status
-      : "treasury_funding_pending"
+      : PAYMENT_STATES.TREASURY_FUNDING_PENDING
     : existingPayout.status;
 
   return {
@@ -1019,7 +1053,7 @@ function applyDodoPaymentStatus(invoice, paymentStatus, data = {}) {
     upfront_paid: paid ? true : invoice.upfront_paid || false,
     remaining_paid: paid ? true : invoice.remaining_paid || false,
     paid_amount: paid ? Number(invoice.amount || 0) : invoice.paid_amount || 0,
-    funded_at: paid ? invoice.funded_at || now : invoice.funded_at || null,
+    fiat_paid_at: paid ? invoice.fiat_paid_at || now : invoice.fiat_paid_at || null,
     completed_at: invoice.completed_at || null,
     payment: {
       ...(invoice.payment || {}),
@@ -1044,7 +1078,11 @@ function applyDodoPaymentStatus(invoice, paymentStatus, data = {}) {
     fiat_escrow: paid
       ? {
           ...existingFiatEscrow,
-          status: existingFiatEscrow.status === "withdrawn" ? "withdrawn" : existingFiatEscrow.status === "escrow_funded" ? "escrow_funded" : "treasury_funding_pending",
+          status: normalizePaymentState(existingFiatEscrow.status) === PAYMENT_STATES.WITHDRAWN
+            ? PAYMENT_STATES.WITHDRAWN
+            : normalizePaymentState(existingFiatEscrow.status) === PAYMENT_STATES.ESCROW_FUNDED
+              ? PAYMENT_STATES.ESCROW_FUNDED
+              : PAYMENT_STATES.TREASURY_FUNDING_PENDING,
           updatedAt: now
         }
       : existingFiatEscrow
@@ -1190,152 +1228,174 @@ function treasuryKeypair() {
 
 function requireStablecoinConfig() {
   const config = stablecoinConfig();
-  if (!config.mint || !config.escrowWallet) throw new ApiError("Solana USDC is not configured.", 503);
+  if (!config.mint || !config.treasuryWallet) throw new ApiError("Solana USDC treasury is not configured.", 503);
   return config;
 }
 
-async function verifyStablecoinTransfer({ signature, expectedBuyer, expectedAmount }) {
-  const config = requireStablecoinConfig();
-  const connection = new Connection(config.rpcUrl, "confirmed");
-  const tx = await connection.getParsedTransaction(signature, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
-  if (!tx) throw new ApiError("Transaction was not found or is not confirmed yet.", 400);
-  if (tx.meta?.err) throw new ApiError("Transaction failed on-chain.", 400);
+function anchorProgramId() {
+  const value = process.env.ANCHOR_ESCROW_PROGRAM_ID || process.env.SETTLEFLOW_ESCROW_PROGRAM_ID;
+  if (!value) {
+    throw new ApiError("Anchor escrow is not configured. Add ANCHOR_ESCROW_PROGRAM_ID after deploying the SettleFlow Anchor program.", 503);
+  }
+  return new PublicKey(value);
+}
 
-  const expectedMint = new PublicKey(config.mint).toBase58();
-  const expectedOwner = new PublicKey(expectedBuyer).toBase58();
-  const expectedDestinationOwner = new PublicKey(config.escrowWallet).toBase58();
-  const expectedUiAmount = Number(expectedAmount);
-  let matchedDestinationTokenAccount = "";
-  const transfer = tx.transaction.message.instructions.find((instruction) => {
-    if (!("parsed" in instruction) || instruction.program !== "spl-token") return false;
-    const info = instruction.parsed?.info || {};
-    const tokenAmount = info.tokenAmount || {};
-    const uiAmount = Number(tokenAmount.uiAmountString || info.amount || 0);
-    const destination = info.destination;
-    const destinationBalance = tx.meta?.postTokenBalances?.find((balance) => {
-      const accountKey = tx.transaction.message.accountKeys[balance.accountIndex]?.pubkey?.toBase58();
-      return accountKey === destination;
-    });
-    const matched = ["transfer", "transferChecked"].includes(instruction.parsed?.type) &&
-      info.mint === expectedMint &&
-      info.authority === expectedOwner &&
-      destinationBalance?.owner === expectedDestinationOwner &&
-      Math.abs(uiAmount - expectedUiAmount) < 0.000001;
-    if (matched) matchedDestinationTokenAccount = destination;
-    return matched;
+function anchorDiscriminator(name) {
+  return crypto.createHash("sha256").update(`global:${name}`).digest().subarray(0, 8);
+}
+
+function encodeAnchorString(value) {
+  const bytes = Buffer.from(String(value), "utf8");
+  const length = Buffer.alloc(4);
+  length.writeUInt32LE(bytes.length, 0);
+  return Buffer.concat([length, bytes]);
+}
+
+function encodeAnchorU64(value) {
+  const buffer = Buffer.alloc(8);
+  buffer.writeBigUInt64LE(BigInt(value));
+  return buffer;
+}
+
+function anchorInstruction(name, keys, args = []) {
+  return new TransactionInstruction({
+    programId: anchorProgramId(),
+    keys,
+    data: Buffer.concat([anchorDiscriminator(name), ...args])
   });
-  if (!transfer) throw new ApiError("Transaction does not match the expected USDC escrow transfer.", 400);
-  console.log("USDC escrow verified", { signature, expectedAmount, buyer: expectedBuyer });
+}
+
+async function anchorEscrowAccounts({ invoiceId, sellerWallet }) {
+  const config = requireStablecoinConfig();
+  const treasury = treasuryKeypair();
+  if (!treasury) throw new ApiError("Treasury funding requires STABLECOIN_TREASURY_SECRET_KEY.", 503);
+
+  const programId = anchorProgramId();
+  const mint = new PublicKey(config.mint);
+  const seller = new PublicKey(sellerWallet);
+  const [escrowPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("escrow"), Buffer.from(String(invoiceId)), treasury.publicKey.toBuffer()],
+    programId
+  );
+  const treasuryTokenAccount = await getAssociatedTokenAddress(mint, treasury.publicKey);
+  const vaultTokenAccount = await getAssociatedTokenAddress(mint, escrowPda, true);
+  const sellerTokenAccount = await getAssociatedTokenAddress(mint, seller);
+
   return {
-    signature,
-    slot: tx.slot,
-    chain: config.chain,
-    token: config.symbol,
-    mint: expectedMint,
-    escrowWallet: expectedDestinationOwner,
-    escrowTokenAccount: matchedDestinationTokenAccount,
-    explorerUrl: `https://explorer.solana.com/tx/${signature}?cluster=devnet`
+    config,
+    treasury,
+    mint,
+    seller,
+    escrowPda,
+    treasuryTokenAccount,
+    vaultTokenAccount,
+    sellerTokenAccount
   };
 }
 
-async function escrowTokenBalance() {
-  const config = requireStablecoinConfig();
-  const connection = new Connection(config.rpcUrl, "confirmed");
-  const mint = new PublicKey(config.mint);
-  const escrowOwner = new PublicKey(config.escrowWallet);
-  const escrowAta = await getAssociatedTokenAddress(mint, escrowOwner);
-  try {
-    const balance = await connection.getTokenAccountBalance(escrowAta);
-    return { tokenAccount: escrowAta.toBase58(), uiAmount: Number(balance.value.uiAmountString || 0) };
-  } catch {
-    return { tokenAccount: escrowAta.toBase58(), uiAmount: 0 };
-  }
-}
+async function initializeAndFundAnchorEscrow({ invoiceId, sellerWallet, amount }) {
+  const accounts = await anchorEscrowAccounts({ invoiceId, sellerWallet });
+  const connection = new Connection(accounts.config.rpcUrl, "confirmed");
+  const lamports = await connection.getBalance(accounts.treasury.publicKey);
 
-async function transferStablecoinFromSigner({ sourceSigner, destinationWallet, amount, label }) {
-  const config = requireStablecoinConfig();
-  if (!sourceSigner) throw new ApiError(`${label} requires a configured secret key in Vercel.`, 503);
-
-  const connection = new Connection(config.rpcUrl, "confirmed");
-  const mint = new PublicKey(config.mint);
-  const destination = new PublicKey(destinationWallet);
-  const sourceSolBalance = await connection.getBalance(sourceSigner.publicKey);
-
-  if (sourceSolBalance < 5000) {
-    throw new ApiError(
-      `${label} wallet needs devnet SOL for fees. Send a small amount of devnet SOL to ${sourceSigner.publicKey.toBase58()}, then try again.`,
-      400
-    );
+  if (lamports < 5000) {
+    throw new ApiError(`Treasury wallet needs devnet SOL for Anchor escrow fees: ${accounts.treasury.publicKey.toBase58()}`, 400);
   }
 
-  const sourceAta = await getAssociatedTokenAddress(mint, sourceSigner.publicKey);
-  const destinationAta = await getAssociatedTokenAddress(mint, destination);
-  let sourceBalance;
-
-  try {
-    sourceBalance = await connection.getTokenAccountBalance(sourceAta);
-  } catch {
-    throw new ApiError(
-      `${label} USDC token account does not exist yet for ${sourceSigner.publicKey.toBase58()}.`,
-      400
-    );
+  const amountBaseUnits = Math.round(Number(amount) * 10 ** accounts.config.decimals);
+  const treasuryBalance = await connection.getTokenAccountBalance(accounts.treasuryTokenAccount).catch(() => null);
+  if (!treasuryBalance || Number(treasuryBalance.value.uiAmountString || 0) < Number(amount)) {
+    throw new ApiError(`Treasury wallet needs ${amount} USDC before it can fund the escrow vault.`, 400);
   }
-  if (Number(sourceBalance.value.uiAmountString || 0) < Number(amount)) throw new ApiError(`${label} token account has ${sourceBalance.value.uiAmountString} USDC, but this transfer requires ${amount} USDC.`, 400);
 
   const transaction = new Transaction();
-  const destinationInfo = await connection.getAccountInfo(destinationAta);
-  if (!destinationInfo) transaction.add(createAssociatedTokenAccountInstruction(sourceSigner.publicKey, destinationAta, destination, mint));
-  transaction.add(createTransferCheckedInstruction(sourceAta, mint, destinationAta, sourceSigner.publicKey, BigInt(Math.round(Number(amount) * 10 ** config.decimals)), config.decimals));
-  const signature = await sendAndConfirmTransaction(connection, transaction, [sourceSigner], { commitment: "confirmed" });
-  console.log(`${label} USDC transfer sent`, { signature, destinationWallet, amount });
+  const vaultInfo = await connection.getAccountInfo(accounts.vaultTokenAccount);
+  if (!vaultInfo) {
+    transaction.add(
+      createAssociatedTokenAccountInstruction(
+        accounts.treasury.publicKey,
+        accounts.vaultTokenAccount,
+        accounts.escrowPda,
+        accounts.mint
+      )
+    );
+  }
+
+  transaction.add(
+    anchorInstruction("initialize_escrow", [
+      { pubkey: accounts.escrowPda, isSigner: false, isWritable: true },
+      { pubkey: accounts.treasury.publicKey, isSigner: true, isWritable: true },
+      { pubkey: accounts.seller, isSigner: false, isWritable: false },
+      { pubkey: accounts.mint, isSigner: false, isWritable: false },
+      { pubkey: accounts.vaultTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
+    ], [encodeAnchorString(invoiceId), encodeAnchorU64(amountBaseUnits)]),
+    anchorInstruction("fund_escrow", [
+      { pubkey: accounts.escrowPda, isSigner: false, isWritable: true },
+      { pubkey: accounts.treasury.publicKey, isSigner: true, isWritable: true },
+      { pubkey: accounts.mint, isSigner: false, isWritable: false },
+      { pubkey: accounts.treasuryTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: accounts.vaultTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
+    ], [encodeAnchorU64(amountBaseUnits)])
+  );
+
+  const signature = await sendAndConfirmTransaction(connection, transaction, [accounts.treasury], { commitment: "confirmed" });
+  console.log("Anchor escrow funded", { invoiceId, signature, escrow: accounts.escrowPda.toBase58(), vault: accounts.vaultTokenAccount.toBase58() });
   return {
     signature,
-    destinationWallet,
-    sourceTokenAccount: sourceAta.toBase58(),
-    destinationTokenAccount: destinationAta.toBase58(),
+    escrowAccount: accounts.escrowPda.toBase58(),
+    vaultTokenAccount: accounts.vaultTokenAccount.toBase58(),
+    treasuryTokenAccount: accounts.treasuryTokenAccount.toBase58(),
     explorerUrl: `https://explorer.solana.com/tx/${signature}?cluster=devnet`
   };
 }
 
-async function fundEscrowFromTreasuryTransfer({ amount }) {
-  const config = requireStablecoinConfig();
-  const treasurySigner = treasuryKeypair();
-  if (!treasurySigner) throw new ApiError("Treasury funding requires STABLECOIN_TREASURY_SECRET_KEY or STABLECOIN_ESCROW_SECRET_KEY in Vercel.", 503);
-  if (treasurySigner.publicKey.toBase58() === config.escrowWallet) {
-    const balance = await escrowTokenBalance();
-    if (balance.uiAmount < Number(amount)) {
-      throw new ApiError(`Escrow/treasury wallet has ${balance.uiAmount} USDC, but this invoice requires ${amount} USDC.`, 400);
-    }
-    const signature = `treasury-reserve-${nanoid(10)}`;
-    return {
-      signature,
-      destinationWallet: config.escrowWallet,
-      sourceTokenAccount: balance.tokenAccount,
-      destinationTokenAccount: balance.tokenAccount,
-      explorerUrl: null,
-      reservedInPlace: true
-    };
-  }
-
-  return transferStablecoinFromSigner({
-    sourceSigner: treasurySigner,
-    destinationWallet: config.escrowWallet,
-    amount,
-    label: "Treasury funding"
-  });
+async function releaseAnchorEscrow({ invoiceId, sellerWallet }) {
+  const accounts = await anchorEscrowAccounts({ invoiceId, sellerWallet });
+  const connection = new Connection(accounts.config.rpcUrl, "confirmed");
+  const signature = await sendAndConfirmTransaction(
+    connection,
+    new Transaction().add(anchorInstruction("release_escrow", [
+      { pubkey: accounts.escrowPda, isSigner: false, isWritable: true },
+      { pubkey: accounts.treasury.publicKey, isSigner: true, isWritable: false }
+    ])),
+    [accounts.treasury],
+    { commitment: "confirmed" }
+  );
+  console.log("Anchor escrow released", { invoiceId, signature });
+  return {
+    signature,
+    escrowAccount: accounts.escrowPda.toBase58(),
+    explorerUrl: `https://explorer.solana.com/tx/${signature}?cluster=devnet`
+  };
 }
 
-async function releaseStablecoinTransfer({ sellerWallet, amount }) {
-  const config = requireStablecoinConfig();
-  const signer = escrowKeypair();
-  if (!signer) throw new ApiError("USDC withdrawal requires STABLECOIN_ESCROW_SECRET_KEY in Vercel.", 503);
-  if (signer.publicKey.toBase58() !== config.escrowWallet) throw new ApiError("STABLECOIN_ESCROW_SECRET_KEY does not match STABLECOIN_ESCROW_WALLET.", 503);
-  return transferStablecoinFromSigner({
-    sourceSigner: signer,
-    destinationWallet: sellerWallet,
-    amount,
-    label: "Escrow withdrawal"
-  });
+async function withdrawAnchorEscrow({ invoiceId, sellerWallet }) {
+  const accounts = await anchorEscrowAccounts({ invoiceId, sellerWallet });
+  const connection = new Connection(accounts.config.rpcUrl, "confirmed");
+  const transaction = new Transaction();
+  const sellerInfo = await connection.getAccountInfo(accounts.sellerTokenAccount);
+  if (!sellerInfo) {
+    transaction.add(createAssociatedTokenAccountInstruction(accounts.treasury.publicKey, accounts.sellerTokenAccount, accounts.seller, accounts.mint));
+  }
+  transaction.add(anchorInstruction("withdraw_funds", [
+    { pubkey: accounts.escrowPda, isSigner: false, isWritable: true },
+    { pubkey: accounts.seller, isSigner: false, isWritable: false },
+    { pubkey: accounts.mint, isSigner: false, isWritable: false },
+    { pubkey: accounts.vaultTokenAccount, isSigner: false, isWritable: true },
+    { pubkey: accounts.sellerTokenAccount, isSigner: false, isWritable: true },
+    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
+  ]));
+  const signature = await sendAndConfirmTransaction(connection, transaction, [accounts.treasury], { commitment: "confirmed" });
+  console.log("Anchor escrow withdrawn", { invoiceId, signature, sellerWallet });
+  return {
+    signature,
+    escrowAccount: accounts.escrowPda.toBase58(),
+    vaultTokenAccount: accounts.vaultTokenAccount.toBase58(),
+    sellerTokenAccount: accounts.sellerTokenAccount.toBase58(),
+    explorerUrl: `https://explorer.solana.com/tx/${signature}?cluster=devnet`
+  };
 }
 
 async function requireAuth(headers) {
@@ -1371,7 +1431,11 @@ export async function handleSettleFlowApi(request, segments = []) {
 
   if (method === "GET" && route === "/stablecoin/config") {
     const config = stablecoinConfig();
-    return { configured: Boolean(config.mint && config.escrowWallet), ...config };
+    return {
+      configured: Boolean(config.mint && config.treasuryWallet && (process.env.ANCHOR_ESCROW_PROGRAM_ID || process.env.SETTLEFLOW_ESCROW_PROGRAM_ID)),
+      anchorProgramId: process.env.ANCHOR_ESCROW_PROGRAM_ID || process.env.SETTLEFLOW_ESCROW_PROGRAM_ID || "",
+      ...config
+    };
   }
 
   if (method === "GET" && segments[0] === "invoice" && segments[1] === "track" && segments[2]) {
@@ -1521,8 +1585,8 @@ export async function handleSettleFlowApi(request, segments = []) {
 
     if (invoiceId) {
       const updated = await updateInvoice(invoiceId, (invoice) => applyDodoPaymentStatus(invoice, paymentStatus, { ...data, paymentId }));
-      if (updated?.status === "Completed") {
-        await notifyInvoiceEvent(updated, "completed", request.url).catch((error) => console.warn("Webhook completion email skipped:", error.message));
+      if (normalizePaymentState(updated?.status) === PAYMENT_STATES.FIAT_PAID) {
+        await recordInvoiceEvent(updated, "fiat_paid", `Dodo fiat payment confirmed for ${Number(updated.amount || 0).toLocaleString()} ${updated.currency || "USDC"}.`).catch((error) => console.warn("Webhook fiat-paid event skipped:", error.message));
       }
     }
 
@@ -1587,9 +1651,10 @@ export async function handleSettleFlowApi(request, segments = []) {
       due_date = null,
       allow_partial_funding = true,
       upfront_percentage,
-      payment_method = "usdc"
+      payment_method = "dodo"
     } = await jsonBody(request);
     if (!amount || !buyer || !seller) throw new ApiError("amount, buyer, and seller are required", 400);
+    if (!String(seller_wallet || "").trim()) throw new ApiError("seller_wallet is required for on-chain escrow withdrawal", 400);
     const risk = await analyzeRisk({ amount: Number(amount), buyerHistory: mockBuyerHistory });
     const config = stablecoinConfig();
     const invoice = {
@@ -1613,19 +1678,25 @@ export async function handleSettleFlowApi(request, segments = []) {
       allow_partial_funding: Boolean(allow_partial_funding),
       escrow_enabled: true,
       milestones: [],
-      payment_method: payment_method === "dodo" ? "dodo" : "usdc",
-      status: "Pending",
+      payment_method: "dodo",
+      status: PAYMENT_STATES.DRAFT,
       upfront_percentage: normalizeUpfrontPercentage(upfront_percentage),
       upfront_paid: false,
       remaining_paid: false,
       paid_amount: 0,
       funded_at: null,
       completed_at: null,
+      fiat_paid_at: null,
+      treasury_funding_started_at: null,
+      escrow_funded_at: null,
+      work_submitted_at: null,
+      released_at: null,
+      withdrawn_at: null,
       risk,
-      payment: { provider: "dodo", status: "not_started", sessionId: null, checkoutUrl: null, paymentId: null, mode: "unconfigured" },
+      payment: { provider: "dodo", status: PAYMENT_STATES.DRAFT, sessionId: null, checkoutUrl: null, paymentId: null, mode: "unconfigured" },
       seller_payout: {
-        provider: payment_method === "dodo" ? "solana_usdc" : "manual",
-        status: payment_method === "dodo" ? "not_started" : "not_required",
+        provider: "anchor_usdc",
+        status: PAYMENT_STATES.DRAFT,
         amount: 0,
         currency: "USDC",
         reference: null,
@@ -1635,7 +1706,7 @@ export async function handleSettleFlowApi(request, segments = []) {
         updatedAt: null
       },
       fiat_escrow: {
-        status: payment_method === "dodo" ? "fiat_payment_pending" : "not_required",
+        status: PAYMENT_STATES.DRAFT,
         treasuryTx: null,
         treasuryExplorerUrl: null,
         withdrawalTx: null,
@@ -1644,7 +1715,7 @@ export async function handleSettleFlowApi(request, segments = []) {
         withdrawnAt: null,
         updatedAt: null
       },
-      stablecoin: { chain: config.chain, token: config.symbol, mint: config.mint, status: "not_started", amount: Number(amount), escrowTx: null, releaseTx: null, mode: "real_spl" },
+      stablecoin: { chain: config.chain, token: config.symbol, mint: config.mint, status: PAYMENT_STATES.DRAFT, amount: Number(amount), escrowTx: null, releaseTx: null, mode: "anchor_pda" },
       createdAt: new Date().toISOString()
     };
     const invoices = await readInvoices();
@@ -1685,8 +1756,15 @@ export async function handleSettleFlowApi(request, segments = []) {
     const invoices = await readInvoices();
     const invoice = getOwnedInvoice(invoices, id, user.id);
     if (!invoice) throw new ApiError("Invoice not found", 404);
+    if (![PAYMENT_STATES.DRAFT, PAYMENT_STATES.CHECKOUT_PENDING].includes(normalizePaymentState(invoice.status))) {
+      throw new ApiError(`Checkout cannot be created while invoice is ${normalizePaymentState(invoice.status)}.`, 409);
+    }
     const checkout = await createDodoCheckoutSession(invoice, request.url);
-    const updated = await updateInvoice(id, (current) => ({ ...current, payment: { ...(current.payment || {}), ...checkout, createdAt: new Date().toISOString() } }));
+    const now = new Date().toISOString();
+    const updated = await updateInvoice(id, (current) => transitionInvoiceStatus(current, PAYMENT_STATES.CHECKOUT_PENDING, {
+      payment: { ...(current.payment || {}), ...checkout, createdAt: now },
+      checkout_created_at: now
+    }));
     return { invoice: withPaymentPlan(updated), checkout };
   }
 
@@ -1718,39 +1796,10 @@ export async function handleSettleFlowApi(request, segments = []) {
     const session = await retrieveDodoCheckoutSession(invoice.payment.sessionId);
     const paymentStatus = session.payment_status || session.status || "processing";
     const updated = await updateInvoice(id, (current) => applyDodoPaymentStatus(current, paymentStatus, session));
-    if (updated.status === "Fiat Paid") {
+    if (normalizePaymentState(updated.status) === PAYMENT_STATES.FIAT_PAID) {
       await recordInvoiceEvent(updated, "fiat_paid", `Dodo fiat payment collected for ${Number(updated.amount || 0).toLocaleString()} ${updated.currency || "USDC"}.`).catch((error) => console.warn("Fiat payment event skipped:", error.message));
     }
     return { invoice: withPaymentPlan(updated), session };
-  }
-
-  if (method === "POST" && route === "/seller-payout/mark-paid") {
-    const { id, reference = "", note = "" } = await jsonBody(request);
-    if (!id) throw new ApiError("invoice id is required", 400);
-    const invoices = await readInvoices();
-    const invoice = getOwnedInvoice(invoices, id, user.id);
-    if (!invoice) throw new ApiError("Invoice not found", 404);
-    if (invoice.payment_method !== "dodo") throw new ApiError("Seller payout tracking is only needed for Dodo card invoices.", 400);
-    if (invoice.status !== "Completed") throw new ApiError("Dodo payment must be completed before marking seller payout paid.", 400);
-
-    const now = new Date().toISOString();
-    const updated = await updateInvoice(id, (current) => ({
-      ...current,
-      seller_payout: {
-        ...(current.seller_payout || {}),
-        provider: "manual",
-        status: "seller_paid",
-        amount: Number(current.amount || 0),
-        currency: current.currency || "USDC",
-        reference: String(reference || "").trim() || `manual-${current.id}`,
-        note: String(note || "").trim(),
-        createdAt: current.seller_payout?.createdAt || now,
-        paidAt: now,
-        updatedAt: now
-      }
-    }));
-    await recordInvoiceEvent(updated, "seller_paid", `Seller payout marked paid for ${Number(updated.amount || 0).toLocaleString()} ${updated.currency || "USDC"}.`).catch((error) => console.warn("Seller payout event skipped:", error.message));
-    return withPaymentPlan(updated);
   }
 
   if (method === "POST" && route === "/treasury/fund-escrow") {
@@ -1759,202 +1808,174 @@ export async function handleSettleFlowApi(request, segments = []) {
     const invoices = await readInvoices();
     const invoice = getOwnedInvoice(invoices, id, user.id);
     if (!invoice) throw new ApiError("Invoice not found", 404);
-    if (invoice.payment_method !== "dodo") throw new ApiError("Treasury escrow funding is only for Dodo card invoices.", 400);
-    if (!["Fiat Paid", "Escrow Funded"].includes(invoice.status)) throw new ApiError("Dodo fiat payment must be collected before treasury funds escrow.", 400);
-    if (invoice.fiat_escrow?.status === "escrow_funded") throw new ApiError("Treasury has already funded escrow for this invoice.", 400);
+    const state = normalizePaymentState(invoice.status);
+    if (state !== PAYMENT_STATES.FIAT_PAID && state !== PAYMENT_STATES.TREASURY_FUNDING_PENDING) {
+      throw new ApiError("Dodo fiat payment must be confirmed before treasury funds escrow.", 400);
+    }
+    if (normalizePaymentState(invoice.fiat_escrow?.status) === PAYMENT_STATES.ESCROW_FUNDED) throw new ApiError("Treasury has already funded escrow for this invoice.", 400);
 
     const sellerWallet = String(invoice.seller_wallet || invoice.seller_payout?.sellerWallet || "").trim();
-    if (!sellerWallet) throw new ApiError("Seller Solana wallet is missing. Create Dodo invoices with a seller wallet before funding escrow.", 400);
+    if (!sellerWallet) throw new ApiError("Seller Solana wallet is missing. Create invoices with a seller wallet before funding escrow.", 400);
     new PublicKey(sellerWallet);
 
-    const funding = await fundEscrowFromTreasuryTransfer({ amount: invoice.amount });
     const now = new Date().toISOString();
-    const updated = await updateInvoice(id, (current) => ({
-      ...current,
-      status: "Escrow Funded",
-      funded_at: current.funded_at || now,
+    await updateInvoice(id, (current) => transitionInvoiceStatus(current, PAYMENT_STATES.TREASURY_FUNDING_PENDING, {
+      treasury_funding_started_at: current.treasury_funding_started_at || now,
       fiat_escrow: {
         ...(current.fiat_escrow || {}),
-        status: "escrow_funded",
+        status: PAYMENT_STATES.TREASURY_FUNDING_PENDING,
+        updatedAt: now
+      }
+    }));
+
+    const funding = await initializeAndFundAnchorEscrow({ invoiceId: invoice.id, sellerWallet, amount: invoice.amount });
+    const updated = await updateInvoice(id, (current) => transitionInvoiceStatus(current, PAYMENT_STATES.ESCROW_FUNDED, {
+      funded_at: current.funded_at || now,
+      escrow_funded_at: current.escrow_funded_at || now,
+      fiat_escrow: {
+        ...(current.fiat_escrow || {}),
+        status: PAYMENT_STATES.ESCROW_FUNDED,
         treasuryTx: funding.signature,
         treasuryExplorerUrl: funding.explorerUrl,
-        reservedInPlace: Boolean(funding.reservedInPlace),
         fundedAt: now,
         updatedAt: now
       },
       stablecoin: {
         ...(current.stablecoin || {}),
-        status: "escrow_locked",
+        status: PAYMENT_STATES.ESCROW_FUNDED,
         escrowTx: funding.signature,
         escrowExplorerUrl: funding.explorerUrl,
-        sourceTokenAccount: funding.sourceTokenAccount,
-        escrowTokenAccount: funding.destinationTokenAccount,
+        escrowAccount: funding.escrowAccount,
+        vaultTokenAccount: funding.vaultTokenAccount,
+        sourceTokenAccount: funding.treasuryTokenAccount,
         sellerWallet,
-        mode: "treasury_to_escrow"
+        mode: "anchor_pda_vault"
       },
       seller_payout: {
         ...(current.seller_payout || {}),
-        provider: "solana_usdc",
-        status: "escrow_funded",
+        provider: "anchor_usdc",
+        status: PAYMENT_STATES.ESCROW_FUNDED,
         amount: Number(current.amount || 0),
         currency: current.currency || "USDC",
         sellerWallet,
         reference: funding.signature,
-        note: "Treasury funded USDC escrow after Dodo fiat collection. Freelancer can withdraw after release.",
+        note: "Treasury funded the Anchor escrow vault after Dodo fiat collection.",
         createdAt: current.seller_payout?.createdAt || now,
         updatedAt: now,
         tx: funding.signature,
         explorerUrl: funding.explorerUrl
       }
     }));
-    await recordInvoiceEvent(updated, "escrow_funded", `Treasury funded USDC escrow. Tx ${funding.signature}.`).catch((error) => console.warn("Treasury funding event skipped:", error.message));
+    await recordInvoiceEvent(updated, "escrow_funded", `Treasury funded Anchor escrow vault. Tx ${funding.signature}.`).catch((error) => console.warn("Treasury funding event skipped:", error.message));
     return withPaymentPlan(updated);
   }
 
-  if (method === "POST" && (route === "/freelancer/withdraw" || route === "/seller-payout/pay-usdc")) {
+  if (method === "POST" && route === "/escrow/release") {
     const { id } = await jsonBody(request);
     if (!id) throw new ApiError("invoice id is required", 400);
     const invoices = await readInvoices();
     const invoice = getOwnedInvoice(invoices, id, user.id);
     if (!invoice) throw new ApiError("Invoice not found", 404);
-    if (invoice.payment_method !== "dodo") throw new ApiError("Freelancer withdrawal here is only for Dodo-funded escrow invoices.", 400);
-    if (invoice.status !== "Escrow Funded") throw new ApiError("Treasury must fund escrow before freelancer withdrawal.", 400);
-    if (invoice.seller_payout?.status === "seller_paid") throw new ApiError("Freelancer has already withdrawn this payout.", 400);
+    if (normalizePaymentState(invoice.status) !== PAYMENT_STATES.ESCROW_FUNDED && normalizePaymentState(invoice.status) !== PAYMENT_STATES.WORK_SUBMITTED) {
+      throw new ApiError("Escrow must be funded before buyer can release funds.", 400);
+    }
     const sellerWallet = String(invoice.seller_wallet || invoice.seller_payout?.sellerWallet || "").trim();
     if (!sellerWallet) throw new ApiError("Seller Solana wallet is missing.", 400);
     new PublicKey(sellerWallet);
 
-    const payout = await releaseStablecoinTransfer({ sellerWallet, amount: invoice.amount });
+    const release = await releaseAnchorEscrow({ invoiceId: invoice.id, sellerWallet });
     const now = new Date().toISOString();
-    const updated = await updateInvoice(id, (current) => ({
-      ...current,
-      status: "Completed",
-      completed_at: current.completed_at || now,
+    const updated = await updateInvoice(id, (current) => transitionInvoiceStatus(current, PAYMENT_STATES.RELEASED, {
+      released_at: current.released_at || now,
       fiat_escrow: {
         ...(current.fiat_escrow || {}),
-        status: "withdrawn",
-        withdrawalTx: payout.signature,
-        withdrawalExplorerUrl: payout.explorerUrl,
+        status: PAYMENT_STATES.RELEASED,
+        releaseTx: release.signature,
+        releaseExplorerUrl: release.explorerUrl,
+        updatedAt: now
+      },
+      seller_payout: {
+        ...(current.seller_payout || {}),
+        provider: "anchor_usdc",
+        status: PAYMENT_STATES.RELEASED,
+        amount: Number(current.amount || 0),
+        currency: current.currency || "USDC",
+        sellerWallet,
+        reference: release.signature,
+        note: "Buyer released the Anchor escrow. Seller withdrawal is now available.",
+        createdAt: current.seller_payout?.createdAt || now,
+        updatedAt: now,
+        tx: release.signature,
+        explorerUrl: release.explorerUrl
+      },
+      stablecoin: {
+        ...(current.stablecoin || {}),
+        status: PAYMENT_STATES.RELEASED,
+        sellerWallet,
+        releaseTx: release.signature,
+        releaseExplorerUrl: release.explorerUrl,
+        escrowAccount: release.escrowAccount,
+        mode: "anchor_release"
+      }
+    }));
+    await recordInvoiceEvent(updated, "released", `Buyer released Anchor escrow. Tx ${release.signature}.`).catch((error) => console.warn("Release event skipped:", error.message));
+    return withPaymentPlan(updated);
+  }
+
+  if (method === "POST" && route === "/freelancer/withdraw") {
+    const { id } = await jsonBody(request);
+    if (!id) throw new ApiError("invoice id is required", 400);
+    const invoices = await readInvoices();
+    const invoice = getOwnedInvoice(invoices, id, user.id);
+    if (!invoice) throw new ApiError("Invoice not found", 404);
+    if (normalizePaymentState(invoice.status) !== PAYMENT_STATES.RELEASED) throw new ApiError("Buyer must release escrow before seller withdrawal.", 400);
+    const sellerWallet = String(invoice.seller_wallet || invoice.seller_payout?.sellerWallet || "").trim();
+    if (!sellerWallet) throw new ApiError("Seller Solana wallet is missing.", 400);
+    new PublicKey(sellerWallet);
+
+    const withdrawal = await withdrawAnchorEscrow({ invoiceId: invoice.id, sellerWallet });
+    const now = new Date().toISOString();
+    const updated = await updateInvoice(id, (current) => transitionInvoiceStatus(current, PAYMENT_STATES.WITHDRAWN, {
+      completed_at: current.completed_at || now,
+      withdrawn_at: current.withdrawn_at || now,
+      fiat_escrow: {
+        ...(current.fiat_escrow || {}),
+        status: PAYMENT_STATES.WITHDRAWN,
+        withdrawalTx: withdrawal.signature,
+        withdrawalExplorerUrl: withdrawal.explorerUrl,
         withdrawnAt: now,
         updatedAt: now
       },
       seller_payout: {
         ...(current.seller_payout || {}),
-        provider: "solana_usdc",
-        status: "seller_paid",
+        provider: "anchor_usdc",
+        status: PAYMENT_STATES.WITHDRAWN,
         amount: Number(current.amount || 0),
         currency: current.currency || "USDC",
         sellerWallet,
-        reference: payout.signature,
-        note: "Freelancer withdrew USDC from escrow.",
+        reference: withdrawal.signature,
+        note: "Seller withdrew USDC from the Anchor escrow vault.",
         createdAt: current.seller_payout?.createdAt || now,
         paidAt: now,
         updatedAt: now,
-        tx: payout.signature,
-        explorerUrl: payout.explorerUrl,
-        sourceTokenAccount: payout.sourceTokenAccount,
-        destinationTokenAccount: payout.destinationTokenAccount
+        tx: withdrawal.signature,
+        explorerUrl: withdrawal.explorerUrl,
+        destinationTokenAccount: withdrawal.sellerTokenAccount
       },
       stablecoin: {
         ...(current.stablecoin || {}),
-        status: "released",
+        status: PAYMENT_STATES.WITHDRAWN,
         sellerWallet,
-        releaseTx: payout.signature,
-        releaseExplorerUrl: payout.explorerUrl,
-        sourceTokenAccount: payout.sourceTokenAccount,
-        destinationTokenAccount: payout.destinationTokenAccount,
-        mode: "escrow_withdrawal"
+        withdrawalTx: withdrawal.signature,
+        withdrawalExplorerUrl: withdrawal.explorerUrl,
+        escrowAccount: withdrawal.escrowAccount,
+        vaultTokenAccount: withdrawal.vaultTokenAccount,
+        destinationTokenAccount: withdrawal.sellerTokenAccount,
+        mode: "anchor_withdrawal"
       }
     }));
-    await recordInvoiceEvent(updated, "withdrawn", `Freelancer withdrew USDC from escrow. Tx ${payout.signature}.`).catch((error) => console.warn("Withdrawal event skipped:", error.message));
-    await notifyInvoiceEvent(updated, "completed", request.url).catch((error) => console.warn("Withdrawal email skipped:", error.message));
-    return withPaymentPlan(updated);
-  }
-
-  if (method === "POST" && route === "/invoice/fund") {
-    const { id } = await jsonBody(request);
-    const invoices = await readInvoices();
-    if (!getOwnedInvoice(invoices, id, user.id)) throw new ApiError("Invoice not found", 404);
-    const now = new Date().toISOString();
-    const updated = await updateInvoice(id, (current) => ({ ...current, status: "Funded", upfront_paid: true, remaining_paid: true, paid_amount: Number(current.amount || 0), funded_at: current.funded_at || now }));
-    await notifyInvoiceEvent(updated, "locked", request.url).catch((error) => console.warn("Fund email skipped:", error.message));
-    return withPaymentPlan(updated);
-  }
-
-  if (method === "POST" && route === "/invoice/release") {
-    const { id } = await jsonBody(request);
-    const invoices = await readInvoices();
-    if (!getOwnedInvoice(invoices, id, user.id)) throw new ApiError("Invoice not found", 404);
-    const now = new Date().toISOString();
-    const updated = await updateInvoice(id, (current) => ({ ...current, status: "Completed", upfront_paid: true, remaining_paid: true, paid_amount: Number(current.amount || 0), completed_at: current.completed_at || now }));
-    await notifyInvoiceEvent(updated, "completed", request.url).catch((error) => console.warn("Release email skipped:", error.message));
-    return withPaymentPlan(updated);
-  }
-
-  if (method === "POST" && route === "/stablecoin/fund") {
-    const { id, buyerWallet, signature, paymentStage = "full" } = await jsonBody(request);
-    const invoices = await readInvoices();
-    const invoice = getOwnedInvoice(invoices, id, user.id);
-    if (!invoice) throw new ApiError("Invoice not found", 404);
-    if (!buyerWallet || !signature) throw new ApiError("buyerWallet and signature are required for real USDC escrow funding", 400);
-    const plan = getPaymentPlan(invoice);
-    const stage = ["upfront", "remaining", "full"].includes(paymentStage) ? paymentStage : "full";
-    const expectedAmount = stage === "upfront" ? plan.upfront_amount : stage === "remaining" ? plan.remaining_amount : invoice.amount;
-    if (stage === "upfront" && invoice.upfront_paid) throw new ApiError("Upfront USDC is already locked for this invoice", 400);
-    if (stage === "remaining" && !invoice.upfront_paid) throw new ApiError("Lock upfront USDC before locking the remaining balance", 400);
-    const transfer = await verifyStablecoinTransfer({ signature, expectedBuyer: buyerWallet, expectedAmount });
-    const fundedAt = new Date().toISOString();
-    const updated = await updateInvoice(id, (current) => {
-      const currentPlan = getPaymentPlan(current);
-      const upfrontPaid = stage === "upfront" || stage === "full" || current.upfront_paid;
-      const remainingPaid = stage === "remaining" || stage === "full" || current.remaining_paid;
-      const paidAmount = Number(((upfrontPaid ? currentPlan.upfront_amount : 0) + (remainingPaid ? currentPlan.remaining_amount : 0)).toFixed(2));
-      return {
-        ...current,
-        status: remainingPaid || stage === "full" ? "Funded" : "Partially Funded",
-        upfront_paid: upfrontPaid,
-        remaining_paid: remainingPaid,
-        paid_amount: paidAmount,
-        funded_at: current.funded_at || fundedAt,
-        stablecoin: {
-          ...(current.stablecoin || {}),
-          chain: transfer.chain,
-          token: transfer.token,
-          mint: transfer.mint,
-          buyerWallet,
-          escrowWallet: transfer.escrowWallet,
-          escrowTokenAccount: transfer.escrowTokenAccount,
-          status: remainingPaid || stage === "full" ? "escrow_locked" : "upfront_locked",
-          amount: Number(current.amount),
-          upfrontTx: stage === "upfront" ? transfer.signature : current.stablecoin?.upfrontTx || null,
-          upfrontExplorerUrl: stage === "upfront" ? transfer.explorerUrl : current.stablecoin?.upfrontExplorerUrl || null,
-          remainingTx: stage === "remaining" ? transfer.signature : current.stablecoin?.remainingTx || null,
-          remainingExplorerUrl: stage === "remaining" ? transfer.explorerUrl : current.stablecoin?.remainingExplorerUrl || null,
-          escrowTx: stage === "full" ? transfer.signature : current.stablecoin?.escrowTx || transfer.signature,
-          escrowExplorerUrl: stage === "full" ? transfer.explorerUrl : current.stablecoin?.escrowExplorerUrl || transfer.explorerUrl,
-          lockedAmount: paidAmount,
-          mode: "real_spl"
-        }
-      };
-    });
-    await notifyInvoiceEvent(updated, "locked", request.url).catch((error) => console.warn("USDC lock email skipped:", error.message));
-    return withPaymentPlan(updated);
-  }
-
-  if (method === "POST" && route === "/stablecoin/release") {
-    const { id, sellerWallet: requestedSellerWallet } = await jsonBody(request);
-    const invoices = await readInvoices();
-    const invoice = getOwnedInvoice(invoices, id, user.id);
-    if (!invoice) throw new ApiError("Invoice not found", 404);
-    const sellerWallet = String(requestedSellerWallet || invoice.seller_wallet || invoice.stablecoin?.sellerWallet || "").trim();
-    if (!sellerWallet) throw new ApiError("Seller wallet is missing on this invoice. Add the seller Solana wallet before releasing USDC.", 400);
-    if (!invoice.upfront_paid || !invoice.remaining_paid) throw new ApiError("Lock both upfront and remaining USDC before releasing escrow", 400);
-    const balance = await escrowTokenBalance();
-    if (balance.uiAmount < Number(invoice.amount)) throw new ApiError(`Escrow has ${balance.uiAmount} USDC, but this invoice requires ${invoice.amount} USDC before release.`, 400);
-    const release = await releaseStablecoinTransfer({ sellerWallet, amount: invoice.amount });
-    const completedAt = new Date().toISOString();
-    const updated = await updateInvoice(id, (current) => ({ ...current, status: "Completed", upfront_paid: true, remaining_paid: true, paid_amount: Number(current.amount || 0), completed_at: current.completed_at || completedAt, stablecoin: { ...(current.stablecoin || {}), status: "released", sellerWallet, releaseTx: release.signature, releaseExplorerUrl: release.explorerUrl, sourceTokenAccount: release.sourceTokenAccount, destinationTokenAccount: release.destinationTokenAccount, mode: "real_spl" } }));
-    await notifyInvoiceEvent(updated, "completed", request.url).catch((error) => console.warn("USDC release email skipped:", error.message));
+    await recordInvoiceEvent(updated, "withdrawn", `Seller withdrew USDC from Anchor escrow vault. Tx ${withdrawal.signature}.`).catch((error) => console.warn("Withdrawal event skipped:", error.message));
+    await notifyInvoiceEvent(updated, "withdrawn", request.url).catch((error) => console.warn("Withdrawal email skipped:", error.message));
     return withPaymentPlan(updated);
   }
 

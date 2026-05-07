@@ -6,16 +6,22 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Circle, Copy, ExternalLink, Loader2, Printer, RefreshCw, Share2, Trash2 } from "lucide-react";
 import AuthModal from "../../../../components/AuthModal";
 import Navbar from "../../../../components/Navbar";
-import { createDodoCheckout, createInvoiceShareLink, deleteInvoice, fundDodoEscrowFromTreasury, getInvoice, syncDodoPayment, withdrawFreelancerEscrow } from "../../../../lib/api";
+import { createDodoCheckout, createInvoiceShareLink, deleteInvoice, fundDodoEscrowFromTreasury, getInvoice, releaseAnchorEscrow, syncDodoPayment, withdrawFreelancerEscrow } from "../../../../lib/api";
 import { AUTH_CHANGED_EVENT, getStoredSession, saveSession } from "../../../../lib/authSession";
+import { PAYMENT_STATES, normalizePaymentState, paymentStateLabel } from "../../../../lib/paymentStates";
 
 const statusStyles = {
-  Pending: "bg-yellow-100 text-yellow-800",
-  "Partially Funded": "bg-emerald-100 text-emerald-800",
-  Funded: "bg-blue-100 text-blue-800",
-  "Fiat Paid": "bg-purple-100 text-purple-800",
-  "Escrow Funded": "bg-blue-100 text-blue-800",
-  Completed: "bg-green-100 text-green-800"
+  draft: "bg-yellow-100 text-yellow-800",
+  checkout_pending: "bg-purple-100 text-purple-800",
+  fiat_paid: "bg-purple-100 text-purple-800",
+  treasury_funding_pending: "bg-orange-100 text-orange-800",
+  escrow_funded: "bg-blue-100 text-blue-800",
+  work_submitted: "bg-blue-100 text-blue-800",
+  release_pending: "bg-blue-100 text-blue-800",
+  released: "bg-emerald-100 text-emerald-800",
+  withdrawn: "bg-green-100 text-green-800",
+  refunded: "bg-gray-100 text-gray-700",
+  disputed: "bg-red-100 text-red-800"
 };
 
 const riskStyles = {
@@ -37,7 +43,7 @@ function formatDate(value) {
 }
 
 function formatStatus(value) {
-  return String(value || "not_started").replaceAll("_", " ");
+  return paymentStateLabel(value);
 }
 
 function shortHash(value) {
@@ -59,93 +65,78 @@ function Pill({ children, className }) {
 function buildTimeline(invoice) {
   const paymentStatus = String(invoice.payment?.status || "").toLowerCase();
   const dodoPaid = ["succeeded", "paid", "completed", "captured"].includes(paymentStatus);
-  const paymentMethod = invoice.payment_method || "usdc";
-  const isDodoInvoice = paymentMethod === "dodo";
-  const isUsdcInvoice = paymentMethod === "usdc";
-  const hasDodoActivity = isDodoInvoice && Boolean(invoice.payment?.checkoutUrl || invoice.payment?.sessionId || dodoPaid);
-  const hasUsdcActivity = Boolean(
-    isUsdcInvoice &&
-    (
-      invoice.stablecoin?.escrowTx ||
-      invoice.stablecoin?.releaseTx ||
-      invoice.upfront_paid ||
-      invoice.remaining_paid ||
-      invoice.stablecoin?.status === "released"
-    )
-  );
+  const state = normalizePaymentState(invoice.status);
 
   const steps = [
     {
-      label: "Invoice created",
-      detail: `${formatAmount(invoice.amount, invoice.currency)} invoice opened for ${invoice.buyer}.`,
+      label: "Checkout Created",
+      detail: invoice.payment?.checkoutUrl
+        ? "Dodo checkout session created for buyer payment."
+        : `${formatAmount(invoice.amount, invoice.currency)} contract opened for ${invoice.buyer}.`,
       done: Boolean(invoice.createdAt),
-      date: invoice.createdAt
+      date: invoice.checkout_created_at || invoice.createdAt
     },
     {
-      label: "AI risk analyzed",
-      detail: `${invoice.risk?.risk_level || "Low"} risk score ${invoice.risk?.risk_score || 0}.`,
-      done: Boolean(invoice.risk),
-      date: invoice.risk?.generated_at || invoice.createdAt
+      label: "Fiat Payment Confirmed",
+      detail: dodoPaid ? `Dodo checkout ${formatStatus(invoice.payment?.status)}.` : "Waiting for Dodo webhook confirmation.",
+      done: [
+        PAYMENT_STATES.FIAT_PAID,
+        PAYMENT_STATES.TREASURY_FUNDING_PENDING,
+        PAYMENT_STATES.ESCROW_FUNDED,
+        PAYMENT_STATES.WORK_SUBMITTED,
+        PAYMENT_STATES.RELEASED,
+        PAYMENT_STATES.WITHDRAWN
+      ].includes(state),
+      date: invoice.fiat_paid_at || invoice.payment?.updatedAt
     },
-  ];
-
-  if (isUsdcInvoice || hasUsdcActivity) {
-    steps.push(
-      {
-        label: "Upfront USDC locked",
-        detail: `${formatAmount(invoice.upfront_amount, invoice.currency)} upfront payment ${invoice.upfront_paid ? "locked in escrow" : "waiting for escrow"}.`,
-        done: Boolean(invoice.upfront_paid),
-        date: invoice.funded_at
-      },
-      {
-        label: "Remaining USDC locked",
-        detail: `${formatAmount(invoice.remaining_amount, invoice.currency)} remaining payment ${invoice.remaining_paid ? "locked in escrow" : "waiting for escrow"}.`,
-        done: Boolean(invoice.remaining_paid),
-        date: invoice.remaining_paid ? invoice.funded_at : null
-      }
-    );
-  }
-
-  if (hasDodoActivity) {
-    steps.push({
-      label: "Dodo card payment",
-      detail: dodoPaid
-        ? `Dodo checkout ${formatStatus(invoice.payment?.status)}.`
-        : `Dodo checkout ${formatStatus(invoice.payment?.status || "created")}.`,
-      done: dodoPaid,
-      date: invoice.payment?.updatedAt || invoice.payment?.createdAt
-    });
-
-    steps.push({
-      label: "Seller payout",
-      detail: invoice.seller_payout?.status === "seller_paid"
-        ? `Freelancer withdrew USDC${invoice.seller_payout?.reference ? ` (${invoice.seller_payout.reference})` : ""}.`
-        : invoice.fiat_escrow?.status === "escrow_funded"
-          ? "USDC is locked in escrow. Freelancer withdrawal is pending."
-          : "Buyer paid by card. Treasury still needs to fund USDC escrow.",
-      done: invoice.seller_payout?.status === "seller_paid",
-      date: invoice.seller_payout?.paidAt || invoice.fiat_escrow?.fundedAt || invoice.seller_payout?.updatedAt
-    });
-  }
-
-  steps.push(
     {
-      label: "Settlement completed",
-      detail: invoice.status === "Completed"
-        ? isDodoInvoice
-          ? invoice.seller_payout?.status === "seller_paid"
-            ? "Buyer payment and seller payout completed."
-            : invoice.fiat_escrow?.status === "escrow_funded"
-              ? "Buyer payment completed. USDC escrow funded, withdrawal pending."
-              : "Buyer payment completed. Treasury escrow funding pending."
-          : "USDC released and invoice completed."
-        : isDodoInvoice
-          ? "Waiting for Dodo payment completion."
-          : "Waiting for final release.",
-      done: invoice.status === "Completed",
-      date: invoice.completed_at
+      label: "Treasury Funding Started",
+      detail: "Treasury prepares the Anchor initialize and fund escrow instructions.",
+      done: [
+        PAYMENT_STATES.TREASURY_FUNDING_PENDING,
+        PAYMENT_STATES.ESCROW_FUNDED,
+        PAYMENT_STATES.WORK_SUBMITTED,
+        PAYMENT_STATES.RELEASED,
+        PAYMENT_STATES.WITHDRAWN
+      ].includes(state),
+      date: invoice.treasury_funding_started_at
+    },
+    {
+      label: "Escrow Funded On-chain",
+      detail: invoice.stablecoin?.vaultTokenAccount
+        ? `USDC locked in Anchor vault ${shortHash(invoice.stablecoin.vaultTokenAccount)}.`
+        : "Waiting for Anchor PDA vault funding.",
+      done: [
+        PAYMENT_STATES.ESCROW_FUNDED,
+        PAYMENT_STATES.WORK_SUBMITTED,
+        PAYMENT_STATES.RELEASED,
+        PAYMENT_STATES.WITHDRAWN
+      ].includes(state),
+      date: invoice.escrow_funded_at || invoice.fiat_escrow?.fundedAt
+    },
+    {
+      label: "Work Submitted",
+      detail: state === PAYMENT_STATES.WORK_SUBMITTED ? "Seller marked work submitted." : "Seller work submission pending.",
+      done: [
+        PAYMENT_STATES.WORK_SUBMITTED,
+        PAYMENT_STATES.RELEASED,
+        PAYMENT_STATES.WITHDRAWN
+      ].includes(state),
+      date: invoice.work_submitted_at
+    },
+    {
+      label: "Buyer Released Funds",
+      detail: "Buyer approved release from the Anchor escrow vault.",
+      done: [PAYMENT_STATES.RELEASED, PAYMENT_STATES.WITHDRAWN].includes(state),
+      date: invoice.released_at
+    },
+    {
+      label: "Seller Withdrawn",
+      detail: state === PAYMENT_STATES.WITHDRAWN ? "Seller withdrew USDC from the escrow vault." : "Withdrawal becomes available after buyer release.",
+      done: state === PAYMENT_STATES.WITHDRAWN,
+      date: invoice.withdrawn_at || invoice.completed_at
     }
-  );
+  ];
 
   return steps;
 }
@@ -198,7 +189,7 @@ export default function InvoiceDetailPage() {
   const progress = Number(invoice?.payment_progress || 0);
   const escrowUrl = invoice?.stablecoin?.escrowExplorerUrl || explorerUrl(invoice?.stablecoin?.escrowTx);
   const releaseUrl = invoice?.stablecoin?.releaseExplorerUrl || explorerUrl(invoice?.stablecoin?.releaseTx);
-  const paymentMethod = invoice?.payment_method || "usdc";
+  const invoiceStatus = normalizePaymentState(invoice?.status);
 
   useEffect(() => {
     setSession(getStoredSession());
@@ -283,6 +274,13 @@ export default function InvoiceDetailPage() {
     await runInvoiceAction(
       () => withdrawFreelancerEscrow(invoice.id),
       () => "Freelancer withdrew USDC."
+    );
+  }
+
+  async function releaseEscrowFunds() {
+    await runInvoiceAction(
+      () => releaseAnchorEscrow(invoice.id),
+      () => "Buyer released Anchor escrow."
     );
   }
 
@@ -379,18 +377,18 @@ export default function InvoiceDetailPage() {
               </div>
 
               <div className="mt-6 flex flex-wrap gap-2">
-                <Pill className={statusStyles[invoice.status] || statusStyles.Pending}>{invoice.status}</Pill>
-                <Pill className="bg-mint text-ink">{paymentMethod === "dodo" ? "Dodo card rail" : "USDC escrow rail"}</Pill>
+                <Pill className={statusStyles[normalizePaymentState(invoice.status)] || statusStyles.draft}>{paymentStateLabel(invoice.status)}</Pill>
+                <Pill className="bg-mint text-ink">Dodo to Anchor escrow</Pill>
                 <Pill className={riskStyles[invoice.risk?.risk_level || "Low"]}>
                   {invoice.risk?.risk_level || "Low"} risk - {invoice.risk?.risk_score || 0}
                 </Pill>
-                {invoice.payment?.status !== "not_started" && <Pill className="bg-purple-100 text-purple-800">Dodo {formatStatus(invoice.payment?.status)}</Pill>}
-                {paymentMethod === "dodo" && invoice.seller_payout?.status !== "not_started" && (
-                  <Pill className={invoice.seller_payout?.status === "seller_paid" ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}>
-                    Seller payout {formatStatus(invoice.seller_payout?.status)}
+                {invoice.payment?.status && ![PAYMENT_STATES.DRAFT, "not_started"].includes(invoice.payment.status) && <Pill className="bg-purple-100 text-purple-800">Dodo {String(invoice.payment?.status).replaceAll("_", " ")}</Pill>}
+                {invoice.seller_payout?.status && normalizePaymentState(invoice.seller_payout?.status) !== PAYMENT_STATES.DRAFT && (
+                  <Pill className={statusStyles[normalizePaymentState(invoice.seller_payout?.status)] || "bg-orange-100 text-orange-800"}>
+                    Withdrawal {formatStatus(invoice.seller_payout?.status)}
                   </Pill>
                 )}
-                {invoice.stablecoin?.status !== "not_started" && <Pill className="bg-emerald-100 text-emerald-800">USDC {formatStatus(invoice.stablecoin?.status)}</Pill>}
+                {invoice.stablecoin?.status && normalizePaymentState(invoice.stablecoin?.status) !== PAYMENT_STATES.DRAFT && <Pill className="bg-emerald-100 text-emerald-800">Vault {formatStatus(invoice.stablecoin?.status)}</Pill>}
               </div>
 
               <div className="mt-8 grid gap-5 md:grid-cols-3">
@@ -424,8 +422,8 @@ export default function InvoiceDetailPage() {
               </div>
 
               <div className="mt-8 flex flex-wrap gap-3 border-t border-black/5 pt-5">
-                {paymentMethod === "dodo" && (!invoice.payment?.checkoutUrl ? (
-                  <button onClick={startDodoCheckout} disabled={busy || invoice.status === "Completed"} className="button-primary gap-2">
+                {(!invoice.payment?.checkoutUrl ? (
+                  <button onClick={startDodoCheckout} disabled={busy || invoiceStatus !== PAYMENT_STATES.DRAFT} className="button-primary gap-2">
                     {busy ? <Loader2 className="animate-spin" size={17} /> : <ExternalLink size={17} />}
                     Pay with Dodo
                   </button>
@@ -435,27 +433,32 @@ export default function InvoiceDetailPage() {
                     Open Dodo checkout
                   </a>
                 ))}
-                {paymentMethod === "dodo" && <button
+                <button
                   onClick={() => runInvoiceAction(() => syncDodoPayment(invoice.id), () => "Dodo payment status synced.")}
                   disabled={busy || !invoice.payment?.sessionId}
                   className="button-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {busy ? <Loader2 className="animate-spin" size={17} /> : <RefreshCw size={17} />}
                   Sync Dodo
-                </button>}
-                {paymentMethod === "dodo" && invoice.status === "Fiat Paid" && (
+                </button>
+                {[PAYMENT_STATES.FIAT_PAID, PAYMENT_STATES.TREASURY_FUNDING_PENDING].includes(invoiceStatus) && (
                   <button onClick={fundEscrowFromTreasury} disabled={busy || !invoice.seller_wallet} className="button-primary gap-2 disabled:cursor-not-allowed disabled:opacity-50">
                     {busy ? <Loader2 className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}
                     Fund escrow USDC
                   </button>
                 )}
-                {paymentMethod === "dodo" && invoice.status === "Escrow Funded" && (
-                  <button onClick={withdrawFreelancerFunds} disabled={busy || !invoice.seller_wallet} className="button-primary gap-2 disabled:cursor-not-allowed disabled:opacity-50">
+                {[PAYMENT_STATES.ESCROW_FUNDED, PAYMENT_STATES.WORK_SUBMITTED].includes(invoiceStatus) && (
+                  <button onClick={releaseEscrowFunds} disabled={busy || !invoice.seller_wallet} className="button-primary gap-2 disabled:cursor-not-allowed disabled:opacity-50">
                     {busy ? <Loader2 className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}
-                    Freelancer withdraw
+                    Release escrow
                   </button>
                 )}
-                {paymentMethod === "usdc" && <Link href="/dashboard#create" className="button-primary">Manage USDC escrow</Link>}
+                {invoiceStatus === PAYMENT_STATES.RELEASED && (
+                  <button onClick={withdrawFreelancerFunds} disabled={busy || !invoice.seller_wallet} className="button-primary gap-2 disabled:cursor-not-allowed disabled:opacity-50">
+                    {busy ? <Loader2 className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}
+                    Withdraw USDC
+                  </button>
+                )}
                 <button onClick={() => window.print()} className="button-secondary gap-2">
                   <Printer size={16} />
                   Print / Save PDF
@@ -481,22 +484,22 @@ export default function InvoiceDetailPage() {
                   </div>
                 </div>
               )}
-              {paymentMethod === "dodo" && (
+              {(
                 <div className="mt-6 rounded-xl border border-orange-100 bg-orange-50 p-5 text-sm font-semibold text-orange-900/75">
-                  <p className="section-kicker text-orange-700">Seller payout pipeline</p>
+                  <p className="section-kicker text-orange-700">Anchor escrow pipeline</p>
                   <p className="mt-3">
-                    Dodo collects fiat first. Then the SettleFlow treasury funds USDC escrow, and the freelancer withdraws after escrow is funded.
+                    Dodo confirms fiat first. Then the SettleFlow treasury locks USDC in an Anchor vault, the buyer releases it, and the seller withdraws on-chain.
                   </p>
                   <p className="mt-2 font-black text-orange-950">
-                    Escrow status: {formatStatus(invoice.fiat_escrow?.status || "not_started")}
+                    Escrow status: {formatStatus(invoice.fiat_escrow?.status || PAYMENT_STATES.DRAFT)}
                   </p>
                   <p className="mt-1 font-black text-orange-950">
-                    Withdrawal status: {formatStatus(invoice.seller_payout?.status || "not_started")}
+                    Withdrawal status: {formatStatus(invoice.seller_payout?.status || PAYMENT_STATES.DRAFT)}
                   </p>
-                  {!invoice.seller_wallet && <p className="mt-2 font-black text-red-700">Missing seller wallet. Create Dodo invoices with a seller Solana wallet for automatic payout.</p>}
+                  {!invoice.seller_wallet && <p className="mt-2 font-black text-red-700">Missing seller wallet. Create Dodo invoices with a seller Solana wallet for Anchor escrow withdrawal.</p>}
                   {invoice.fiat_escrow?.treasuryTx && <p className="mt-2">Treasury funding: {invoice.fiat_escrow.treasuryTx}</p>}
                   {invoice.seller_payout?.reference && <p className="mt-2">Reference: {invoice.seller_payout.reference}</p>}
-                  {invoice.seller_payout?.explorerUrl && <a className="mt-2 inline-flex font-black text-leaf underline" href={invoice.seller_payout.explorerUrl} target="_blank" rel="noreferrer">Seller payout tx</a>}
+                  {invoice.seller_payout?.explorerUrl && <a className="mt-2 inline-flex font-black text-leaf underline" href={invoice.seller_payout.explorerUrl} target="_blank" rel="noreferrer">Withdrawal tx</a>}
                   {invoice.seller_payout?.paidAt && <p className="mt-2">Paid at: {formatDate(invoice.seller_payout.paidAt)}</p>}
                 </div>
               )}

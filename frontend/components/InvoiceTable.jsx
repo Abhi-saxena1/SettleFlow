@@ -2,14 +2,20 @@
 
 import { ExternalLink, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { PAYMENT_STATES, normalizePaymentState, paymentStateLabel } from "../lib/paymentStates";
 
 const statusStyles = {
-  Pending: "bg-yellow-100 text-yellow-800",
-  "Partially Funded": "bg-emerald-100 text-emerald-800",
-  Funded: "bg-blue-100 text-blue-800",
-  "Fiat Paid": "bg-purple-100 text-purple-800",
-  "Escrow Funded": "bg-blue-100 text-blue-800",
-  Completed: "bg-green-100 text-green-800"
+  draft: "bg-yellow-100 text-yellow-800",
+  checkout_pending: "bg-purple-100 text-purple-800",
+  fiat_paid: "bg-purple-100 text-purple-800",
+  treasury_funding_pending: "bg-orange-100 text-orange-800",
+  escrow_funded: "bg-blue-100 text-blue-800",
+  work_submitted: "bg-blue-100 text-blue-800",
+  release_pending: "bg-blue-100 text-blue-800",
+  released: "bg-emerald-100 text-emerald-800",
+  withdrawn: "bg-green-100 text-green-800",
+  refunded: "bg-gray-100 text-gray-700",
+  disputed: "bg-red-100 text-red-800"
 };
 
 const riskStyles = {
@@ -19,7 +25,7 @@ const riskStyles = {
 };
 
 const paymentStyles = {
-  not_started: "bg-gray-100 text-gray-700",
+  draft: "bg-gray-100 text-gray-700",
   checkout_created: "bg-purple-100 text-purple-800",
   processing: "bg-blue-100 text-blue-800",
   succeeded: "bg-green-100 text-green-800",
@@ -28,22 +34,23 @@ const paymentStyles = {
 };
 
 const stablecoinStyles = {
-  not_started: "bg-gray-100 text-gray-700",
-  upfront_locked: "bg-emerald-100 text-emerald-800",
-  escrow_locked: "bg-emerald-100 text-emerald-800",
+  draft: "bg-gray-100 text-gray-700",
+  escrow_funded: "bg-emerald-100 text-emerald-800",
   released: "bg-green-100 text-green-800",
-  failed: "bg-red-100 text-red-800"
+  withdrawn: "bg-green-100 text-green-800",
+  disputed: "bg-red-100 text-red-800"
 };
 
 const payoutStyles = {
-  not_started: "bg-gray-100 text-gray-700",
-  pending_platform_payout: "bg-orange-100 text-orange-800",
+  draft: "bg-gray-100 text-gray-700",
+  fiat_paid: "bg-purple-100 text-purple-800",
   treasury_funding_pending: "bg-orange-100 text-orange-800",
   escrow_funded: "bg-blue-100 text-blue-800",
-  ready_to_pay_seller: "bg-blue-100 text-blue-800",
-  seller_payout_processing: "bg-blue-100 text-blue-800",
-  seller_paid: "bg-green-100 text-green-800",
-  failed: "bg-red-100 text-red-800"
+  work_submitted: "bg-blue-100 text-blue-800",
+  release_pending: "bg-blue-100 text-blue-800",
+  released: "bg-emerald-100 text-emerald-800",
+  withdrawn: "bg-green-100 text-green-800",
+  disputed: "bg-red-100 text-red-800"
 };
 
 function StatusPill({ children, className }) {
@@ -59,7 +66,7 @@ function formatAmount(value, currency = "USDC") {
 }
 
 function formatStatusLabel(value) {
-  return String(value || "not_started").replaceAll("_", " ");
+  return paymentStateLabel(value);
 }
 
 function PaymentBreakdown({ invoice }) {
@@ -134,19 +141,18 @@ function InvoiceActions({
   busyId,
   onDelete,
   onDodoCheckout,
-  onFundStablecoin,
   onReleaseStablecoin,
   onFundDodoEscrow,
   onWithdrawFreelancer,
   onSyncPayment
 }) {
   const actionBusy = busyId === invoice.id;
-  const paymentMethod = invoice.payment_method || "usdc";
+  const status = normalizePaymentState(invoice.status);
 
-  if (invoice.status === "Completed") {
+  if (status === PAYMENT_STATES.WITHDRAWN) {
     return (
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-bold text-black/40">Settled</span>
+        <span className="text-sm font-bold text-black/40">Withdrawn</span>
         <button
           onClick={() => onDelete(invoice.id)}
           className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-100 bg-red-50 text-red-700 hover:-translate-y-0.5"
@@ -159,23 +165,7 @@ function InvoiceActions({
     );
   }
 
-  if (invoice.status === "Funded") {
-    const stablecoinLocked = invoice.stablecoin?.status === "escrow_locked";
-
-    return stablecoinLocked ? (
-      <button onClick={() => onReleaseStablecoin(invoice.id)} className="button-primary h-10 gap-2 px-4 py-0 leading-none" disabled={actionBusy}>
-        {actionBusy ? <Loader2 className="animate-spin" size={16} /> : "Release USDC"}
-      </button>
-    ) : (
-      <div className="flex flex-wrap items-center gap-3">
-        <button onClick={() => onDelete(invoice.id)} className="text-xs font-bold text-red-600 underline" disabled={actionBusy}>
-          Delete
-        </button>
-      </div>
-    );
-  }
-
-  if (paymentMethod === "dodo" && invoice.status === "Fiat Paid") {
+  if (status === PAYMENT_STATES.FIAT_PAID || status === PAYMENT_STATES.TREASURY_FUNDING_PENDING) {
     return (
       <div className="flex flex-wrap items-center gap-2">
         <button onClick={() => onFundDodoEscrow(invoice.id)} className="button-primary h-10 gap-2 px-4 py-0 leading-none" disabled={actionBusy || !invoice.seller_wallet}>
@@ -188,11 +178,21 @@ function InvoiceActions({
     );
   }
 
-  if (paymentMethod === "dodo" && invoice.status === "Escrow Funded") {
+  if (status === PAYMENT_STATES.ESCROW_FUNDED || status === PAYMENT_STATES.WORK_SUBMITTED) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => onReleaseStablecoin(invoice.id)} className="button-primary h-10 gap-2 px-4 py-0 leading-none" disabled={actionBusy || !invoice.seller_wallet}>
+          {actionBusy ? <Loader2 className="animate-spin" size={16} /> : "Release escrow"}
+        </button>
+      </div>
+    );
+  }
+
+  if (status === PAYMENT_STATES.RELEASED) {
     return (
       <div className="flex flex-wrap items-center gap-2">
         <button onClick={() => onWithdrawFreelancer(invoice.id)} className="button-primary h-10 gap-2 px-4 py-0 leading-none" disabled={actionBusy || !invoice.seller_wallet}>
-          {actionBusy ? <Loader2 className="animate-spin" size={16} /> : "Freelancer withdraw"}
+          {actionBusy ? <Loader2 className="animate-spin" size={16} /> : "Withdraw USDC"}
         </button>
       </div>
     );
@@ -200,7 +200,7 @@ function InvoiceActions({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {paymentMethod === "dodo" && (!invoice.payment?.checkoutUrl ? (
+      {(!invoice.payment?.checkoutUrl ? (
         <button
           onClick={() => onDodoCheckout(invoice.id)}
           className="button-primary h-10 gap-2 px-4 py-0 leading-none"
@@ -226,32 +226,7 @@ function InvoiceActions({
           </button>
         </>
       ))}
-      {paymentMethod === "usdc" && !invoice.upfront_paid && (
-        <button
-          onClick={() => onFundStablecoin(invoice, "upfront")}
-          className="button-primary h-10 gap-2 px-4 py-0 leading-none"
-          disabled={actionBusy}
-          title="Transfer the upfront USDC amount from your wallet to escrow"
-        >
-          {actionBusy ? <Loader2 className="animate-spin" size={16} /> : "Lock Upfront USDC"}
-        </button>
-      )}
-      {paymentMethod === "usdc" && invoice.upfront_paid && !invoice.remaining_paid && (
-        <button
-          onClick={() => onFundStablecoin(invoice, "remaining")}
-          className="button-primary h-10 gap-2 px-4 py-0 leading-none"
-          disabled={actionBusy}
-          title="Transfer the remaining USDC balance from your wallet to escrow"
-        >
-          {actionBusy ? <Loader2 className="animate-spin" size={16} /> : "Lock Remaining USDC"}
-        </button>
-      )}
-      {paymentMethod === "dodo" && (
-        <span className="rounded-full bg-mint px-3 py-2 text-xs font-black text-black/50">Card rail selected</span>
-      )}
-      {paymentMethod === "usdc" && (
-        <span className="rounded-full bg-mint px-3 py-2 text-xs font-black text-black/50">USDC escrow selected</span>
-      )}
+      <span className="rounded-full bg-mint px-3 py-2 text-xs font-black text-black/50">Dodo to Anchor escrow</span>
       <button
         onClick={() => onDelete(invoice.id)}
         className="inline-flex h-10 items-center gap-1 rounded-full px-2 text-xs font-bold text-red-600 underline"
@@ -269,18 +244,17 @@ function InvoiceCard({
   busyId,
   onDelete,
   onDodoCheckout,
-  onFundStablecoin,
   onReleaseStablecoin,
   onFundDodoEscrow,
   onWithdrawFreelancer,
   onSyncPayment
 }) {
-  const paymentStatus = invoice.payment?.status || "not_started";
-  const stablecoinStatus = invoice.stablecoin?.status || "not_started";
-  const showPaymentStatus = paymentStatus !== "not_started";
-  const showStablecoinStatus = stablecoinStatus !== "not_started";
-  const payoutStatus = invoice.seller_payout?.status || "not_started";
-  const showPayoutStatus = (invoice.payment_method || "usdc") === "dodo" && payoutStatus !== "not_started";
+  const paymentStatus = invoice.payment?.status || PAYMENT_STATES.DRAFT;
+  const stablecoinStatus = normalizePaymentState(invoice.stablecoin?.status || invoice.status);
+  const showPaymentStatus = ![PAYMENT_STATES.DRAFT, "not_started"].includes(paymentStatus);
+  const showStablecoinStatus = stablecoinStatus !== PAYMENT_STATES.DRAFT;
+  const payoutStatus = normalizePaymentState(invoice.seller_payout?.status || invoice.status);
+  const showPayoutStatus = payoutStatus !== PAYMENT_STATES.DRAFT;
 
   return (
     <article className="rounded-xl border border-black/10 bg-white p-4 shadow-md">
@@ -309,26 +283,26 @@ function InvoiceCard({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <StatusPill className={statusStyles[invoice.status] || statusStyles.Pending}>{invoice.status}</StatusPill>
+        <StatusPill className={statusStyles[normalizePaymentState(invoice.status)] || statusStyles.draft}>{paymentStateLabel(invoice.status)}</StatusPill>
         <StatusPill className="bg-mint text-ink">
-          {(invoice.payment_method || "usdc") === "dodo" ? "Dodo card" : "USDC escrow"}
+          Dodo to Anchor escrow
         </StatusPill>
         <StatusPill className={riskStyles[invoice.risk?.risk_level || "Low"]}>
           {invoice.risk?.risk_level || "Low"} - {invoice.risk?.risk_score || 0}
         </StatusPill>
         {showPaymentStatus && (
-          <StatusPill className={paymentStyles[paymentStatus] || paymentStyles.not_started}>
-            Dodo {formatStatusLabel(paymentStatus)}
+          <StatusPill className={paymentStyles[paymentStatus] || paymentStyles.draft}>
+            Dodo {String(paymentStatus).replaceAll("_", " ")}
           </StatusPill>
         )}
         {showStablecoinStatus && (
-          <StatusPill className={stablecoinStyles[stablecoinStatus] || stablecoinStyles.not_started}>
-            USDC {formatStatusLabel(stablecoinStatus)}
+          <StatusPill className={stablecoinStyles[stablecoinStatus] || stablecoinStyles.draft}>
+            Vault {formatStatusLabel(stablecoinStatus)}
           </StatusPill>
         )}
         {showPayoutStatus && (
-          <StatusPill className={payoutStyles[payoutStatus] || payoutStyles.not_started}>
-            Seller payout {formatStatusLabel(payoutStatus)}
+          <StatusPill className={payoutStyles[payoutStatus] || payoutStyles.draft}>
+            Withdrawal {formatStatusLabel(payoutStatus)}
           </StatusPill>
         )}
       </div>
@@ -343,7 +317,6 @@ function InvoiceCard({
           busyId={busyId}
           onDelete={onDelete}
           onDodoCheckout={onDodoCheckout}
-          onFundStablecoin={onFundStablecoin}
           onReleaseStablecoin={onReleaseStablecoin}
           onFundDodoEscrow={onFundDodoEscrow}
           onWithdrawFreelancer={onWithdrawFreelancer}
@@ -358,7 +331,6 @@ export default function InvoiceTable({
   invoices,
   onDodoCheckout,
   onDelete,
-  onFundStablecoin,
   onReleaseStablecoin,
   onFundDodoEscrow,
   onWithdrawFreelancer,
@@ -375,7 +347,6 @@ export default function InvoiceTable({
             busyId={busyId}
             onDelete={onDelete}
             onDodoCheckout={onDodoCheckout}
-            onFundStablecoin={onFundStablecoin}
             onReleaseStablecoin={onReleaseStablecoin}
             onFundDodoEscrow={onFundDodoEscrow}
             onWithdrawFreelancer={onWithdrawFreelancer}

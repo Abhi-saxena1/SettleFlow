@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CreditCard, Loader2, Plus, Wallet } from "lucide-react";
+import { CreditCard, Loader2, Plus } from "lucide-react";
 import { createInvoice } from "../lib/api";
 
 export default function InvoiceForm({ disabled = false, onCreated, onError, onLoginRequired }) {
@@ -17,7 +17,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
     due_date: "",
     upfront_percentage: "50",
     allow_partial_funding: true,
-    payment_method: "usdc"
+    payment_method: "dodo"
   });
   const [loading, setLoading] = useState(false);
   const requiresSellerWallet = true;
@@ -37,7 +37,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
     setLoading(true);
     try {
       if (!form.seller_wallet.trim()) {
-        throw new Error("Seller Solana wallet is required so SettleFlow can release or pay out USDC to the seller.");
+        throw new Error("Seller Solana wallet is required so the Anchor escrow vault can release withdrawal to the seller.");
       }
 
       const invoice = await createInvoice({
@@ -137,7 +137,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             value={form.seller_wallet}
             onChange={(event) => updateField("seller_wallet", event.target.value)}
             className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
-            placeholder={form.payment_method === "dodo" ? "Solana wallet for automatic seller payout" : "Solana wallet for USDC release"}
+            placeholder="Seller Solana wallet for Anchor escrow withdrawal"
           />
         </label>
         <label className="grid gap-2 text-sm font-bold text-black/55">
@@ -170,26 +170,9 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
           />
         </label>
-        <div className="grid gap-2 text-sm font-bold text-black/55">
-          Payment method
-          <div className="grid grid-cols-2 gap-2 rounded-xl bg-mint p-1">
-            <button
-              type="button"
-              onClick={() => updateField("payment_method", "usdc")}
-              className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-black ${form.payment_method === "usdc" ? "bg-ink text-white shadow-sm" : "text-ink hover:bg-white"}`}
-            >
-              <Wallet size={16} />
-              USDC Escrow
-            </button>
-            <button
-              type="button"
-              onClick={() => updateField("payment_method", "dodo")}
-              className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-black ${form.payment_method === "dodo" ? "bg-ink text-white shadow-sm" : "text-ink hover:bg-white"}`}
-            >
-              <CreditCard size={16} />
-              Dodo Card
-            </button>
-          </div>
+        <div className="inline-flex items-center gap-2 rounded-xl bg-mint px-4 py-3 text-sm font-black text-ink">
+          <CreditCard size={16} />
+          Dodo checkout to Anchor escrow
         </div>
       </div>
       <button className="button-primary mt-6 w-full gap-2" disabled={loading}>

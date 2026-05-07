@@ -26,7 +26,19 @@ create table if not exists invoices (
   allow_partial_funding boolean not null default true,
   milestones jsonb not null default '[]'::jsonb,
   status text not null default 'created' check (
-    status in ('created', 'partially_funded', 'fully_funded', 'awaiting_release', 'released', 'completed', 'disputed')
+    status in (
+      'draft',
+      'checkout_pending',
+      'fiat_paid',
+      'treasury_funding_pending',
+      'escrow_funded',
+      'work_submitted',
+      'release_pending',
+      'released',
+      'withdrawn',
+      'refunded',
+      'disputed'
+    )
   ),
   escrow_enabled boolean not null default true,
   created_at timestamptz not null default now(),
@@ -36,14 +48,16 @@ create table if not exists invoices (
 alter table invoices drop constraint if exists invoices_status_check;
 alter table invoices add constraint invoices_status_check check (
   status in (
-    'created',
-    'partially_funded',
-    'fully_funded',
+    'draft',
+    'checkout_pending',
     'fiat_paid',
+    'treasury_funding_pending',
     'escrow_funded',
-    'awaiting_release',
+    'work_submitted',
+    'release_pending',
     'released',
-    'completed',
+    'withdrawn',
+    'refunded',
     'disputed'
   )
 );
@@ -56,7 +70,7 @@ create table if not exists escrow_transactions (
   escrow_account text,
   transaction_signature text,
   status text not null default 'created' check (
-    status in ('created', 'funded', 'partially_funded', 'released', 'completed', 'failed', 'disputed')
+    status in ('draft', 'checkout_pending', 'fiat_paid', 'treasury_funding_pending', 'escrow_funded', 'work_submitted', 'release_pending', 'released', 'withdrawn', 'refunded', 'failed', 'disputed')
   ),
   created_at timestamptz not null default now()
 );
@@ -78,15 +92,19 @@ create table if not exists seller_payouts (
   amount numeric(18, 6) not null default 0,
   currency text not null default 'USDC',
   provider text not null default 'manual',
-  status text not null default 'pending_platform_payout' check (
+  status text not null default 'draft' check (
     status in (
-      'not_started',
-      'pending_platform_payout',
+      'draft',
+      'checkout_pending',
+      'fiat_paid',
       'treasury_funding_pending',
       'escrow_funded',
-      'ready_to_pay_seller',
-      'seller_payout_processing',
-      'seller_paid',
+      'work_submitted',
+      'release_pending',
+      'released',
+      'withdrawn',
+      'refunded',
+      'disputed',
       'failed'
     )
   ),
@@ -100,13 +118,17 @@ create table if not exists seller_payouts (
 alter table seller_payouts drop constraint if exists seller_payouts_status_check;
 alter table seller_payouts add constraint seller_payouts_status_check check (
   status in (
-    'not_started',
-    'pending_platform_payout',
+    'draft',
+    'checkout_pending',
+    'fiat_paid',
     'treasury_funding_pending',
     'escrow_funded',
-    'ready_to_pay_seller',
-    'seller_payout_processing',
-    'seller_paid',
+    'work_submitted',
+    'release_pending',
+    'released',
+    'withdrawn',
+    'refunded',
+    'disputed',
     'failed'
   )
 );

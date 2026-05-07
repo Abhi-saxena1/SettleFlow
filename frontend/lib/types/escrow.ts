@@ -1,20 +1,27 @@
 export type EscrowInvoiceStatus =
-  | "created"
-  | "partially_funded"
-  | "fully_funded"
+  | "draft"
+  | "checkout_pending"
   | "fiat_paid"
+  | "treasury_funding_pending"
   | "escrow_funded"
-  | "awaiting_release"
+  | "work_submitted"
+  | "release_pending"
   | "released"
-  | "completed"
+  | "withdrawn"
+  | "refunded"
   | "disputed";
 
 export type EscrowTransactionStatus =
-  | "created"
-  | "funded"
-  | "partially_funded"
+  | "draft"
+  | "checkout_pending"
+  | "fiat_paid"
+  | "treasury_funding_pending"
+  | "escrow_funded"
+  | "work_submitted"
+  | "release_pending"
   | "released"
-  | "completed"
+  | "withdrawn"
+  | "refunded"
   | "failed"
   | "disputed";
 
@@ -22,7 +29,7 @@ export type EscrowMilestone = {
   id: string;
   title: string;
   amount: number;
-  status: "created" | "funded" | "released" | "disputed";
+  status: "draft" | "escrow_funded" | "released" | "withdrawn" | "disputed";
 };
 
 export type EscrowInvoice = {
@@ -65,13 +72,17 @@ export type InvoiceEvent = {
 };
 
 export type SellerPayoutStatus =
-  | "not_started"
-  | "pending_platform_payout"
+  | "draft"
+  | "checkout_pending"
+  | "fiat_paid"
   | "treasury_funding_pending"
   | "escrow_funded"
-  | "ready_to_pay_seller"
-  | "seller_payout_processing"
-  | "seller_paid"
+  | "work_submitted"
+  | "release_pending"
+  | "released"
+  | "withdrawn"
+  | "refunded"
+  | "disputed"
   | "failed";
 
 export type SellerPayout = {
@@ -81,7 +92,7 @@ export type SellerPayout = {
   seller_email: string | null;
   amount: number;
   currency: string;
-  provider: "manual" | "solana_usdc";
+  provider: "anchor_usdc";
   status: SellerPayoutStatus;
   reference: string | null;
   note: string | null;

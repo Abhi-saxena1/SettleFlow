@@ -9,3 +9,6 @@ yarn-debug.log*
 yarn-error.log*
 escrow-devnet.json
 *-keypair.json
+program/target/
+program/programs/*/target/
+program/programs/*/Cargo.lock
