@@ -189,16 +189,83 @@ function fromInvoiceRecord(record) {
   };
 }
 
+function escrowStatusFromInvoice(invoice) {
+  if (invoice.status === "Completed") return "completed";
+  if (invoice.status === "Funded") return "fully_funded";
+  if (invoice.status === "Partially Funded") return "partially_funded";
+  if (invoice.status === "Disputed") return "disputed";
+  return "created";
+}
+
+function toEscrowInvoiceRecord(invoice) {
+  const planned = withPaymentPlan(invoice);
+  return {
+    id: planned.id,
+    share_token: planned.share_token || planned.tracking_token,
+    seller_id: null,
+    title: planned.title,
+    description: planned.description,
+    client_name: planned.buyer,
+    client_email: planned.buyer_email || null,
+    amount: planned.amount,
+    funded_amount: planned.paid_amount || 0,
+    seller_wallet: planned.seller_wallet || planned.stablecoin?.sellerWallet || null,
+    due_date: planned.due_date || null,
+    allow_partial_funding: planned.allow_partial_funding,
+    milestones: planned.milestones || [],
+    status: escrowStatusFromInvoice(planned),
+    escrow_enabled: planned.escrow_enabled,
+    created_at: planned.createdAt || new Date().toISOString()
+  };
+}
+
+async function mirrorEscrowInvoice(invoice) {
+  const supabase = supabaseClient();
+  if (!supabase || !invoice?.id) return;
+
+  const { error } = await supabase
+    .from("invoices")
+    .upsert(toEscrowInvoiceRecord(invoice), { onConflict: "id" });
+
+  if (error) {
+    console.warn("Escrow invoice realtime mirror skipped:", supabaseErrorMessage(error));
+  }
+}
+
+async function recordInvoiceEvent(invoice, eventType, description) {
+  const supabase = supabaseClient();
+  if (!supabase || !invoice?.id) return;
+
+  await mirrorEscrowInvoice(invoice);
+  const { error } = await supabase
+    .from("invoice_events")
+    .insert({
+      invoice_id: invoice.id,
+      event_type: eventType,
+      description
+    });
+
+  if (error) {
+    console.warn("Invoice realtime event skipped:", supabaseErrorMessage(error));
+  }
+}
+
 function publicInvoice(invoice) {
   const safeInvoice = withPaymentPlan(invoice);
   return {
     id: safeInvoice.id,
+    share_token: safeInvoice.share_token || safeInvoice.tracking_token,
+    title: safeInvoice.title || "Escrow protected invoice",
+    description: safeInvoice.description || "",
     amount: safeInvoice.amount,
     currency: safeInvoice.currency,
     buyer: safeInvoice.buyer,
     seller: safeInvoice.seller,
     status: safeInvoice.status,
     payment_method: safeInvoice.payment_method,
+    escrow_enabled: safeInvoice.escrow_enabled !== false,
+    allow_partial_funding: Boolean(safeInvoice.allow_partial_funding),
+    due_date: safeInvoice.due_date || null,
     upfront_percentage: safeInvoice.upfront_percentage,
     upfront_amount: safeInvoice.upfront_amount,
     remaining_amount: safeInvoice.remaining_amount,
@@ -348,6 +415,7 @@ async function writeInvoices(invoices) {
       console.error("Supabase writeInvoices failed, using JSON fallback:", supabaseErrorMessage(error));
     } else {
       memoryStore[INVOICES_FILE] = invoices;
+      await Promise.allSettled(invoices.filter((invoice) => invoice?.id).map(mirrorEscrowInvoice));
       return;
     }
   }
@@ -513,6 +581,21 @@ async function clearAllAuthData() {
       }
     }
 
+    for (const table of ["invoice_events", "escrow_transactions", "invoices"]) {
+      const { error } = await supabase
+        .from(table)
+        .delete()
+        .neq("id", table === "invoices" ? "__never__" : "00000000-0000-0000-0000-000000000000");
+
+      if (error) {
+        if (isMissingSupabaseTable(error)) {
+          skipped.push(table);
+        } else {
+          throw new ApiError(`Unable to clear ${table}: ${supabaseErrorMessage(error)}`, 500);
+        }
+      }
+    }
+
     const { error: userError } = await supabase
       .from("settleflow_users")
       .delete()
@@ -636,6 +719,7 @@ async function notifyInvoiceEvent(invoice, event, requestUrl) {
     preview: previews[event],
     actionUrl
   });
+  await recordInvoiceEvent(invoice, event, previews[event]).catch((error) => console.warn("Invoice event log skipped:", error.message));
   console.log("SettleFlow email notification", { invoiceId: invoice.id, event, sent: result.sent, recipients: recipients.filter(Boolean).length });
 }
 
@@ -662,7 +746,9 @@ async function updateInvoice(id, updater) {
       if (error) {
         console.error("Supabase updateInvoice write failed, using JSON fallback:", supabaseErrorMessage(error));
       } else {
-        return fromInvoiceRecord(data);
+        const saved = fromInvoiceRecord(data);
+        await mirrorEscrowInvoice(saved);
+        return saved;
       }
     } else {
       return null;
@@ -674,6 +760,7 @@ async function updateInvoice(id, updater) {
   if (index === -1) return null;
   invoices[index] = updater(invoices[index]);
   await writeInvoices(invoices);
+  await mirrorEscrowInvoice(invoices[index]);
   return invoices[index];
 }
 
@@ -727,6 +814,15 @@ function withPaymentPlan(invoice) {
     seller: invoice.seller || "Unknown seller",
     buyer_email: invoice.buyer_email || "",
     seller_email: invoice.seller_email || "",
+    title: invoice.title || "Escrow protected invoice",
+    description: invoice.description || "",
+    due_date: invoice.due_date || null,
+    seller_wallet: invoice.seller_wallet || "",
+    escrow_enabled: invoice.escrow_enabled !== false,
+    allow_partial_funding: Boolean(invoice.allow_partial_funding ?? true),
+    milestones: Array.isArray(invoice.milestones) ? invoice.milestones : [],
+    share_token: invoice.share_token || invoice.tracking_token || "",
+    tracking_token: invoice.tracking_token || invoice.share_token || "",
     owner_email: invoice.owner_email || "",
     payment_method: invoice.payment_method || "usdc",
     risk: invoice.risk || {
@@ -1120,7 +1216,7 @@ export async function handleSettleFlowApi(request, segments = []) {
 
   if (method === "GET" && segments[0] === "invoice" && segments[1] === "track" && segments[2]) {
     const invoices = await readInvoices();
-    const invoice = invoices.find((item) => item.tracking_token === segments[2]);
+    const invoice = invoices.find((item) => item.tracking_token === segments[2] || item.share_token === segments[2]);
     if (!invoice) throw new ApiError("Invoice tracking link not found", 404);
     return publicInvoice(invoice);
   }
@@ -1319,22 +1415,44 @@ export async function handleSettleFlowApi(request, segments = []) {
   }
 
   if (method === "POST" && route === "/invoice/create") {
-    const { amount, buyer, seller, buyer_email = "", seller_email = "", upfront_percentage, payment_method = "usdc" } = await jsonBody(request);
+    const {
+      title = "Escrow protected invoice",
+      description = "",
+      amount,
+      buyer,
+      seller,
+      buyer_email = "",
+      seller_email = "",
+      seller_wallet = "",
+      due_date = null,
+      allow_partial_funding = true,
+      upfront_percentage,
+      payment_method = "usdc"
+    } = await jsonBody(request);
     if (!amount || !buyer || !seller) throw new ApiError("amount, buyer, and seller are required", 400);
     const risk = await analyzeRisk({ amount: Number(amount), buyerHistory: mockBuyerHistory });
     const config = stablecoinConfig();
     const invoice = {
       id: `INV-${nanoid(6).toUpperCase()}`,
+      settleflow_id: `SF-${nanoid(8).toUpperCase()}`,
       tracking_token: nanoid(24),
+      share_token: nanoid(24),
       source: "user",
       ownerUserId: user.id,
       owner_email: normalizeEmail(user.email),
       amount: Number(amount),
       currency: "USDC",
+      title,
+      description,
       buyer,
       seller,
       buyer_email: normalizeEmail(buyer_email),
       seller_email: normalizeEmail(seller_email),
+      seller_wallet,
+      due_date,
+      allow_partial_funding: Boolean(allow_partial_funding),
+      escrow_enabled: true,
+      milestones: [],
       payment_method: payment_method === "dodo" ? "dodo" : "usdc",
       status: "Pending",
       upfront_percentage: normalizeUpfrontPercentage(upfront_percentage),
@@ -1372,6 +1490,8 @@ export async function handleSettleFlowApi(request, segments = []) {
       if (error) {
         throw new ApiError(`Unable to delete invoice: ${supabaseErrorMessage(error)}`, 500);
       }
+
+      await supabase.from("invoices").delete().eq("id", segments[1]);
     } else {
       await writeInvoices(invoices.filter((item) => item.id !== segments[1]));
     }
@@ -1395,11 +1515,16 @@ export async function handleSettleFlowApi(request, segments = []) {
     const invoice = getOwnedInvoice(invoices, id, user.id);
     if (!invoice) throw new ApiError("Invoice not found", 404);
     const token = invoice.tracking_token || nanoid(24);
-    const updated = await updateInvoice(id, (current) => ({ ...current, tracking_token: current.tracking_token || token }));
+    const shareToken = invoice.share_token || token;
+    const updated = await updateInvoice(id, (current) => ({
+      ...current,
+      tracking_token: current.tracking_token || token,
+      share_token: current.share_token || shareToken
+    }));
     const origin = new URL(request.url).origin;
     return {
       invoice: withPaymentPlan(updated),
-      trackingUrl: `${origin}/track/${updated.tracking_token}`
+      trackingUrl: `${origin}/invoice/${updated.share_token || updated.tracking_token}`
     };
   }
 
