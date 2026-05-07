@@ -6,13 +6,15 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Circle, Copy, ExternalLink, Loader2, Printer, RefreshCw, Share2, Trash2 } from "lucide-react";
 import AuthModal from "../../../../components/AuthModal";
 import Navbar from "../../../../components/Navbar";
-import { createDodoCheckout, createInvoiceShareLink, deleteInvoice, getInvoice, paySellerWithUsdc, syncDodoPayment } from "../../../../lib/api";
+import { createDodoCheckout, createInvoiceShareLink, deleteInvoice, fundDodoEscrowFromTreasury, getInvoice, syncDodoPayment, withdrawFreelancerEscrow } from "../../../../lib/api";
 import { AUTH_CHANGED_EVENT, getStoredSession, saveSession } from "../../../../lib/authSession";
 
 const statusStyles = {
   Pending: "bg-yellow-100 text-yellow-800",
   "Partially Funded": "bg-emerald-100 text-emerald-800",
   Funded: "bg-blue-100 text-blue-800",
+  "Fiat Paid": "bg-purple-100 text-purple-800",
+  "Escrow Funded": "bg-blue-100 text-blue-800",
   Completed: "bg-green-100 text-green-800"
 };
 
@@ -117,10 +119,12 @@ function buildTimeline(invoice) {
     steps.push({
       label: "Seller payout",
       detail: invoice.seller_payout?.status === "seller_paid"
-        ? `Seller payout marked paid${invoice.seller_payout?.reference ? ` (${invoice.seller_payout.reference})` : ""}.`
-        : "Buyer paid by card. Automatic USDC payout to seller is pending.",
+        ? `Freelancer withdrew USDC${invoice.seller_payout?.reference ? ` (${invoice.seller_payout.reference})` : ""}.`
+        : invoice.fiat_escrow?.status === "escrow_funded"
+          ? "USDC is locked in escrow. Freelancer withdrawal is pending."
+          : "Buyer paid by card. Treasury still needs to fund USDC escrow.",
       done: invoice.seller_payout?.status === "seller_paid",
-      date: invoice.seller_payout?.paidAt || invoice.seller_payout?.updatedAt
+      date: invoice.seller_payout?.paidAt || invoice.fiat_escrow?.fundedAt || invoice.seller_payout?.updatedAt
     });
   }
 
@@ -131,7 +135,9 @@ function buildTimeline(invoice) {
         ? isDodoInvoice
           ? invoice.seller_payout?.status === "seller_paid"
             ? "Buyer payment and seller payout completed."
-            : "Buyer payment completed. Automatic seller payout pending."
+            : invoice.fiat_escrow?.status === "escrow_funded"
+              ? "Buyer payment completed. USDC escrow funded, withdrawal pending."
+              : "Buyer payment completed. Treasury escrow funding pending."
           : "USDC released and invoice completed."
         : isDodoInvoice
           ? "Waiting for Dodo payment completion."
@@ -266,10 +272,17 @@ export default function InvoiceDetailPage() {
     );
   }
 
-  async function paySellerAutomatically() {
+  async function fundEscrowFromTreasury() {
     await runInvoiceAction(
-      () => paySellerWithUsdc(invoice.id),
-      () => "Seller paid with USDC."
+      () => fundDodoEscrowFromTreasury(invoice.id),
+      () => "Treasury funded USDC escrow."
+    );
+  }
+
+  async function withdrawFreelancerFunds() {
+    await runInvoiceAction(
+      () => withdrawFreelancerEscrow(invoice.id),
+      () => "Freelancer withdrew USDC."
     );
   }
 
@@ -430,10 +443,16 @@ export default function InvoiceDetailPage() {
                   {busy ? <Loader2 className="animate-spin" size={17} /> : <RefreshCw size={17} />}
                   Sync Dodo
                 </button>}
-                {paymentMethod === "dodo" && invoice.status === "Completed" && invoice.seller_payout?.status !== "seller_paid" && (
-                  <button onClick={paySellerAutomatically} disabled={busy || !invoice.seller_wallet} className="button-primary gap-2 disabled:cursor-not-allowed disabled:opacity-50">
+                {paymentMethod === "dodo" && invoice.status === "Fiat Paid" && (
+                  <button onClick={fundEscrowFromTreasury} disabled={busy || !invoice.seller_wallet} className="button-primary gap-2 disabled:cursor-not-allowed disabled:opacity-50">
                     {busy ? <Loader2 className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}
-                    Pay seller USDC
+                    Fund escrow USDC
+                  </button>
+                )}
+                {paymentMethod === "dodo" && invoice.status === "Escrow Funded" && (
+                  <button onClick={withdrawFreelancerFunds} disabled={busy || !invoice.seller_wallet} className="button-primary gap-2 disabled:cursor-not-allowed disabled:opacity-50">
+                    {busy ? <Loader2 className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}
+                    Freelancer withdraw
                   </button>
                 )}
                 {paymentMethod === "usdc" && <Link href="/dashboard#create" className="button-primary">Manage USDC escrow</Link>}
@@ -466,12 +485,16 @@ export default function InvoiceDetailPage() {
                 <div className="mt-6 rounded-xl border border-orange-100 bg-orange-50 p-5 text-sm font-semibold text-orange-900/75">
                   <p className="section-kicker text-orange-700">Seller payout pipeline</p>
                   <p className="mt-3">
-                    Dodo card payments collect into the platform merchant balance. SettleFlow pays the seller from the configured USDC treasury wallet.
+                    Dodo collects fiat first. Then the SettleFlow treasury funds USDC escrow, and the freelancer withdraws after escrow is funded.
                   </p>
                   <p className="mt-2 font-black text-orange-950">
-                    Status: {formatStatus(invoice.seller_payout?.status || "not_started")}
+                    Escrow status: {formatStatus(invoice.fiat_escrow?.status || "not_started")}
+                  </p>
+                  <p className="mt-1 font-black text-orange-950">
+                    Withdrawal status: {formatStatus(invoice.seller_payout?.status || "not_started")}
                   </p>
                   {!invoice.seller_wallet && <p className="mt-2 font-black text-red-700">Missing seller wallet. Create Dodo invoices with a seller Solana wallet for automatic payout.</p>}
+                  {invoice.fiat_escrow?.treasuryTx && <p className="mt-2">Treasury funding: {invoice.fiat_escrow.treasuryTx}</p>}
                   {invoice.seller_payout?.reference && <p className="mt-2">Reference: {invoice.seller_payout.reference}</p>}
                   {invoice.seller_payout?.explorerUrl && <a className="mt-2 inline-flex font-black text-leaf underline" href={invoice.seller_payout.explorerUrl} target="_blank" rel="noreferrer">Seller payout tx</a>}
                   {invoice.seller_payout?.paidAt && <p className="mt-2">Paid at: {formatDate(invoice.seller_payout.paidAt)}</p>}

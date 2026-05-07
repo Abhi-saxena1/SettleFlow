@@ -133,6 +133,20 @@ export function paySellerWithUsdc(id) {
   });
 }
 
+export function fundDodoEscrowFromTreasury(id) {
+  return request("/treasury/fund-escrow", {
+    method: "POST",
+    body: JSON.stringify({ id })
+  });
+}
+
+export function withdrawFreelancerEscrow(id) {
+  return request("/freelancer/withdraw", {
+    method: "POST",
+    body: JSON.stringify({ id })
+  });
+}
+
 export function getStablecoinConfig() {
   return request("/stablecoin/config");
 }

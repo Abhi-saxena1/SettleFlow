@@ -191,6 +191,8 @@ function fromInvoiceRecord(record) {
 
 function escrowStatusFromInvoice(invoice) {
   if (invoice.status === "Completed") return "completed";
+  if (invoice.status === "Escrow Funded") return "fully_funded";
+  if (invoice.status === "Fiat Paid") return "awaiting_release";
   if (invoice.status === "Funded") return "fully_funded";
   if (invoice.status === "Partially Funded") return "partially_funded";
   if (invoice.status === "Disputed") return "disputed";
@@ -317,6 +319,15 @@ function publicInvoice(invoice) {
       explorerUrl: safeInvoice.seller_payout?.explorerUrl || null,
       paidAt: safeInvoice.seller_payout?.paidAt || null,
       updatedAt: safeInvoice.seller_payout?.updatedAt || null
+    },
+    fiat_escrow: {
+      status: safeInvoice.fiat_escrow?.status || "not_required",
+      treasuryTx: safeInvoice.fiat_escrow?.treasuryTx || null,
+      treasuryExplorerUrl: safeInvoice.fiat_escrow?.treasuryExplorerUrl || null,
+      withdrawalTx: safeInvoice.fiat_escrow?.withdrawalTx || null,
+      withdrawalExplorerUrl: safeInvoice.fiat_escrow?.withdrawalExplorerUrl || null,
+      fundedAt: safeInvoice.fiat_escrow?.fundedAt || null,
+      withdrawnAt: safeInvoice.fiat_escrow?.withdrawnAt || null
     },
     stablecoin: {
       chain: safeInvoice.stablecoin?.chain,
@@ -812,7 +823,10 @@ function getPaymentPlan(invoice) {
   const remainingAmount = Number((amount - upfrontAmount).toFixed(2));
   const upfrontPaid = Boolean(invoice.upfront_paid);
   const remainingPaid = Boolean(invoice.remaining_paid || invoice.status === "Completed");
-  const paidAmount = Number((upfrontPaid ? upfrontAmount : 0) + (remainingPaid ? remainingAmount : 0));
+  const fiatPaidAmount = invoice.payment_method === "dodo" && ["Fiat Paid", "Escrow Funded", "Completed"].includes(invoice.status)
+    ? amount
+    : 0;
+  const paidAmount = Math.max(Number((upfrontPaid ? upfrontAmount : 0) + (remainingPaid ? remainingAmount : 0)), fiatPaidAmount);
 
   return {
     upfront_percentage: upfrontPercentage,
@@ -827,12 +841,14 @@ function getPaymentPlan(invoice) {
 
 function stablecoinConfig() {
   const signer = escrowKeypair();
+  const treasurySigner = treasuryKeypair();
   return {
     rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
     chain: process.env.STABLECOIN_CHAIN || "solana-devnet",
     symbol: process.env.STABLECOIN_SYMBOL || "USDC",
     mint: process.env.STABLECOIN_MINT_ADDRESS || "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
     escrowWallet: process.env.STABLECOIN_ESCROW_WALLET || signer?.publicKey.toBase58() || "",
+    treasuryWallet: process.env.STABLECOIN_TREASURY_WALLET || process.env.TREASURY_WALLET || treasurySigner?.publicKey.toBase58() || "",
     decimals: Number(process.env.STABLECOIN_DECIMALS || 6)
   };
 }
@@ -876,7 +892,7 @@ function withPaymentPlan(invoice) {
       mode: "unconfigured"
     },
     seller_payout: {
-      provider: "manual",
+      provider: sellerPayout.provider || "manual",
       status: sellerPayout.status || defaultPayoutStatus,
       amount: Number(sellerPayout.amount || 0),
       currency: sellerPayout.currency || "USDC",
@@ -900,6 +916,14 @@ function withPaymentPlan(invoice) {
       escrowTx: null,
       releaseTx: null,
       mode: "real_spl"
+    },
+    fiat_escrow: invoice.fiat_escrow || {
+      status: invoice.payment_method === "dodo" ? "fiat_payment_pending" : "not_required",
+      treasuryTx: null,
+      withdrawalTx: null,
+      fundedAt: null,
+      approvedAt: null,
+      withdrawnAt: null
     },
     ...getPaymentPlan(invoice)
   };
@@ -977,15 +1001,26 @@ function applyDodoPaymentStatus(invoice, paymentStatus, data = {}) {
   const paid = isDodoPaid(paymentStatus);
   const now = new Date().toISOString();
   const existingPayout = invoice.seller_payout || {};
+  const existingFiatEscrow = invoice.fiat_escrow || {};
+  const nextInvoiceStatus = paid
+    ? ["Escrow Funded", "Completed"].includes(invoice.status)
+      ? invoice.status
+      : "Fiat Paid"
+    : invoice.status;
+  const nextPayoutStatus = paid
+    ? ["seller_paid", "escrow_funded"].includes(existingPayout.status)
+      ? existingPayout.status
+      : "treasury_funding_pending"
+    : existingPayout.status;
 
   return {
     ...invoice,
-    status: paid ? "Completed" : invoice.status,
+    status: nextInvoiceStatus,
     upfront_paid: paid ? true : invoice.upfront_paid || false,
     remaining_paid: paid ? true : invoice.remaining_paid || false,
     paid_amount: paid ? Number(invoice.amount || 0) : invoice.paid_amount || 0,
     funded_at: paid ? invoice.funded_at || now : invoice.funded_at || null,
-    completed_at: paid ? invoice.completed_at || now : invoice.completed_at || null,
+    completed_at: invoice.completed_at || null,
     payment: {
       ...(invoice.payment || {}),
       provider: "dodo",
@@ -995,17 +1030,24 @@ function applyDodoPaymentStatus(invoice, paymentStatus, data = {}) {
     },
     seller_payout: paid
       ? {
-          provider: "manual",
-          status: existingPayout.status === "seller_paid" ? "seller_paid" : "pending_platform_payout",
+          provider: existingPayout.provider || "solana_usdc",
+          status: nextPayoutStatus,
           amount: Number(invoice.amount || 0),
           currency: invoice.currency || "USDC",
           reference: existingPayout.reference || null,
-          note: existingPayout.note || "Dodo collected buyer payment. Platform seller payout is pending.",
+          note: existingPayout.note || "Dodo collected buyer payment. Treasury must fund USDC escrow next.",
           createdAt: existingPayout.createdAt || now,
           paidAt: existingPayout.paidAt || null,
           updatedAt: now
         }
-      : existingPayout
+      : existingPayout,
+    fiat_escrow: paid
+      ? {
+          ...existingFiatEscrow,
+          status: existingFiatEscrow.status === "withdrawn" ? "withdrawn" : existingFiatEscrow.status === "escrow_funded" ? "escrow_funded" : "treasury_funding_pending",
+          updatedAt: now
+        }
+      : existingFiatEscrow
   };
 }
 
@@ -1129,9 +1171,21 @@ async function retrieveDodoCheckoutSession(sessionId) {
   return client.checkoutSessions.retrieve(sessionId);
 }
 
+function keypairFromSecret(secret) {
+  if (!secret) return null;
+  return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secret)));
+}
+
 function escrowKeypair() {
-  if (!process.env.STABLECOIN_ESCROW_SECRET_KEY) return null;
-  return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(process.env.STABLECOIN_ESCROW_SECRET_KEY)));
+  return keypairFromSecret(process.env.STABLECOIN_ESCROW_SECRET_KEY);
+}
+
+function treasuryKeypair() {
+  return keypairFromSecret(
+    process.env.STABLECOIN_TREASURY_SECRET_KEY ||
+    process.env.TREASURY_SECRET_KEY ||
+    process.env.STABLECOIN_ESCROW_SECRET_KEY
+  );
 }
 
 function requireStablecoinConfig() {
@@ -1198,61 +1252,90 @@ async function escrowTokenBalance() {
   }
 }
 
-async function releaseStablecoinTransfer({ sellerWallet, amount }) {
+async function transferStablecoinFromSigner({ sourceSigner, destinationWallet, amount, label }) {
   const config = requireStablecoinConfig();
-  const signer = escrowKeypair();
-  if (!signer) throw new ApiError("USDC release requires STABLECOIN_ESCROW_SECRET_KEY in Vercel.", 503);
-  if (signer.publicKey.toBase58() !== config.escrowWallet) throw new ApiError("STABLECOIN_ESCROW_SECRET_KEY does not match STABLECOIN_ESCROW_WALLET.", 503);
+  if (!sourceSigner) throw new ApiError(`${label} requires a configured secret key in Vercel.`, 503);
 
   const connection = new Connection(config.rpcUrl, "confirmed");
   const mint = new PublicKey(config.mint);
-  const seller = new PublicKey(sellerWallet);
-  const escrowSolBalance = await connection.getBalance(signer.publicKey);
+  const destination = new PublicKey(destinationWallet);
+  const sourceSolBalance = await connection.getBalance(sourceSigner.publicKey);
 
-  if (escrowSolBalance < 5000) {
+  if (sourceSolBalance < 5000) {
     throw new ApiError(
-      `Escrow wallet needs devnet SOL for release fees. Send a small amount of devnet SOL to ${signer.publicKey.toBase58()}, then try Release USDC again.`,
+      `${label} wallet needs devnet SOL for fees. Send a small amount of devnet SOL to ${sourceSigner.publicKey.toBase58()}, then try again.`,
       400
     );
   }
 
-  const sourceAta = await getAssociatedTokenAddress(mint, signer.publicKey);
-  const destinationAta = await getAssociatedTokenAddress(mint, seller);
+  const sourceAta = await getAssociatedTokenAddress(mint, sourceSigner.publicKey);
+  const destinationAta = await getAssociatedTokenAddress(mint, destination);
   let sourceBalance;
 
   try {
     sourceBalance = await connection.getTokenAccountBalance(sourceAta);
   } catch {
     throw new ApiError(
-      `Escrow USDC token account does not exist yet for ${signer.publicKey.toBase58()}. Lock USDC into escrow before releasing funds.`,
+      `${label} USDC token account does not exist yet for ${sourceSigner.publicKey.toBase58()}.`,
       400
     );
   }
-  if (Number(sourceBalance.value.uiAmountString || 0) < Number(amount)) throw new ApiError(`Escrow token account has ${sourceBalance.value.uiAmountString} USDC, but this invoice requires ${amount} USDC.`, 400);
+  if (Number(sourceBalance.value.uiAmountString || 0) < Number(amount)) throw new ApiError(`${label} token account has ${sourceBalance.value.uiAmountString} USDC, but this transfer requires ${amount} USDC.`, 400);
 
   const transaction = new Transaction();
   const destinationInfo = await connection.getAccountInfo(destinationAta);
-  if (!destinationInfo) transaction.add(createAssociatedTokenAccountInstruction(signer.publicKey, destinationAta, seller, mint));
-  transaction.add(createTransferCheckedInstruction(sourceAta, mint, destinationAta, signer.publicKey, BigInt(Math.round(Number(amount) * 10 ** config.decimals)), config.decimals));
-  const signature = await sendAndConfirmTransaction(connection, transaction, [signer], { commitment: "confirmed" });
-  console.log("USDC released", { signature, sellerWallet, amount });
+  if (!destinationInfo) transaction.add(createAssociatedTokenAccountInstruction(sourceSigner.publicKey, destinationAta, destination, mint));
+  transaction.add(createTransferCheckedInstruction(sourceAta, mint, destinationAta, sourceSigner.publicKey, BigInt(Math.round(Number(amount) * 10 ** config.decimals)), config.decimals));
+  const signature = await sendAndConfirmTransaction(connection, transaction, [sourceSigner], { commitment: "confirmed" });
+  console.log(`${label} USDC transfer sent`, { signature, destinationWallet, amount });
   return {
     signature,
-    sellerWallet,
+    destinationWallet,
     sourceTokenAccount: sourceAta.toBase58(),
     destinationTokenAccount: destinationAta.toBase58(),
     explorerUrl: `https://explorer.solana.com/tx/${signature}?cluster=devnet`
   };
 }
 
-async function sendSellerPayoutUsdc({ sellerWallet, amount }) {
-  const payout = await releaseStablecoinTransfer({ sellerWallet, amount });
-  console.log("Dodo seller payout sent via USDC treasury", {
-    signature: payout.signature,
-    sellerWallet,
-    amount
+async function fundEscrowFromTreasuryTransfer({ amount }) {
+  const config = requireStablecoinConfig();
+  const treasurySigner = treasuryKeypair();
+  if (!treasurySigner) throw new ApiError("Treasury funding requires STABLECOIN_TREASURY_SECRET_KEY or STABLECOIN_ESCROW_SECRET_KEY in Vercel.", 503);
+  if (treasurySigner.publicKey.toBase58() === config.escrowWallet) {
+    const balance = await escrowTokenBalance();
+    if (balance.uiAmount < Number(amount)) {
+      throw new ApiError(`Escrow/treasury wallet has ${balance.uiAmount} USDC, but this invoice requires ${amount} USDC.`, 400);
+    }
+    const signature = `treasury-reserve-${nanoid(10)}`;
+    return {
+      signature,
+      destinationWallet: config.escrowWallet,
+      sourceTokenAccount: balance.tokenAccount,
+      destinationTokenAccount: balance.tokenAccount,
+      explorerUrl: null,
+      reservedInPlace: true
+    };
+  }
+
+  return transferStablecoinFromSigner({
+    sourceSigner: treasurySigner,
+    destinationWallet: config.escrowWallet,
+    amount,
+    label: "Treasury funding"
   });
-  return payout;
+}
+
+async function releaseStablecoinTransfer({ sellerWallet, amount }) {
+  const config = requireStablecoinConfig();
+  const signer = escrowKeypair();
+  if (!signer) throw new ApiError("USDC withdrawal requires STABLECOIN_ESCROW_SECRET_KEY in Vercel.", 503);
+  if (signer.publicKey.toBase58() !== config.escrowWallet) throw new ApiError("STABLECOIN_ESCROW_SECRET_KEY does not match STABLECOIN_ESCROW_WALLET.", 503);
+  return transferStablecoinFromSigner({
+    sourceSigner: signer,
+    destinationWallet: sellerWallet,
+    amount,
+    label: "Escrow withdrawal"
+  });
 }
 
 async function requireAuth(headers) {
@@ -1541,7 +1624,7 @@ export async function handleSettleFlowApi(request, segments = []) {
       risk,
       payment: { provider: "dodo", status: "not_started", sessionId: null, checkoutUrl: null, paymentId: null, mode: "unconfigured" },
       seller_payout: {
-        provider: "manual",
+        provider: payment_method === "dodo" ? "solana_usdc" : "manual",
         status: payment_method === "dodo" ? "not_started" : "not_required",
         amount: 0,
         currency: "USDC",
@@ -1549,6 +1632,16 @@ export async function handleSettleFlowApi(request, segments = []) {
         note: "",
         createdAt: null,
         paidAt: null,
+        updatedAt: null
+      },
+      fiat_escrow: {
+        status: payment_method === "dodo" ? "fiat_payment_pending" : "not_required",
+        treasuryTx: null,
+        treasuryExplorerUrl: null,
+        withdrawalTx: null,
+        withdrawalExplorerUrl: null,
+        fundedAt: null,
+        withdrawnAt: null,
         updatedAt: null
       },
       stablecoin: { chain: config.chain, token: config.symbol, mint: config.mint, status: "not_started", amount: Number(amount), escrowTx: null, releaseTx: null, mode: "real_spl" },
@@ -1625,8 +1718,8 @@ export async function handleSettleFlowApi(request, segments = []) {
     const session = await retrieveDodoCheckoutSession(invoice.payment.sessionId);
     const paymentStatus = session.payment_status || session.status || "processing";
     const updated = await updateInvoice(id, (current) => applyDodoPaymentStatus(current, paymentStatus, session));
-    if (updated.status === "Completed") {
-      await notifyInvoiceEvent(updated, "completed", request.url).catch((error) => console.warn("Dodo completion email skipped:", error.message));
+    if (updated.status === "Fiat Paid") {
+      await recordInvoiceEvent(updated, "fiat_paid", `Dodo fiat payment collected for ${Number(updated.amount || 0).toLocaleString()} ${updated.currency || "USDC"}.`).catch((error) => console.warn("Fiat payment event skipped:", error.message));
     }
     return { invoice: withPaymentPlan(updated), session };
   }
@@ -1660,32 +1753,91 @@ export async function handleSettleFlowApi(request, segments = []) {
     return withPaymentPlan(updated);
   }
 
-  if (method === "POST" && route === "/seller-payout/pay-usdc") {
+  if (method === "POST" && route === "/treasury/fund-escrow") {
     const { id } = await jsonBody(request);
     if (!id) throw new ApiError("invoice id is required", 400);
     const invoices = await readInvoices();
     const invoice = getOwnedInvoice(invoices, id, user.id);
     if (!invoice) throw new ApiError("Invoice not found", 404);
-    if (invoice.payment_method !== "dodo") throw new ApiError("Automatic seller payout here is only for Dodo card invoices.", 400);
-    if (invoice.status !== "Completed") throw new ApiError("Dodo payment must be completed before paying the seller.", 400);
-    if (invoice.seller_payout?.status === "seller_paid") throw new ApiError("Seller payout is already marked paid.", 400);
+    if (invoice.payment_method !== "dodo") throw new ApiError("Treasury escrow funding is only for Dodo card invoices.", 400);
+    if (!["Fiat Paid", "Escrow Funded"].includes(invoice.status)) throw new ApiError("Dodo fiat payment must be collected before treasury funds escrow.", 400);
+    if (invoice.fiat_escrow?.status === "escrow_funded") throw new ApiError("Treasury has already funded escrow for this invoice.", 400);
 
     const sellerWallet = String(invoice.seller_wallet || invoice.seller_payout?.sellerWallet || "").trim();
-    if (!sellerWallet) throw new ApiError("Seller Solana wallet is missing. Create Dodo invoices with a seller wallet to use automatic USDC payout.", 400);
+    if (!sellerWallet) throw new ApiError("Seller Solana wallet is missing. Create Dodo invoices with a seller wallet before funding escrow.", 400);
     new PublicKey(sellerWallet);
 
-    const balance = await escrowTokenBalance();
-    if (balance.uiAmount < Number(invoice.amount)) {
-      throw new ApiError(
-        `Platform USDC treasury has ${balance.uiAmount} USDC, but this seller payout requires ${invoice.amount} USDC. Fund STABLECOIN_ESCROW_WALLET first.`,
-        400
-      );
-    }
-
-    const payout = await sendSellerPayoutUsdc({ sellerWallet, amount: invoice.amount });
+    const funding = await fundEscrowFromTreasuryTransfer({ amount: invoice.amount });
     const now = new Date().toISOString();
     const updated = await updateInvoice(id, (current) => ({
       ...current,
+      status: "Escrow Funded",
+      funded_at: current.funded_at || now,
+      fiat_escrow: {
+        ...(current.fiat_escrow || {}),
+        status: "escrow_funded",
+        treasuryTx: funding.signature,
+        treasuryExplorerUrl: funding.explorerUrl,
+        reservedInPlace: Boolean(funding.reservedInPlace),
+        fundedAt: now,
+        updatedAt: now
+      },
+      stablecoin: {
+        ...(current.stablecoin || {}),
+        status: "escrow_locked",
+        escrowTx: funding.signature,
+        escrowExplorerUrl: funding.explorerUrl,
+        sourceTokenAccount: funding.sourceTokenAccount,
+        escrowTokenAccount: funding.destinationTokenAccount,
+        sellerWallet,
+        mode: "treasury_to_escrow"
+      },
+      seller_payout: {
+        ...(current.seller_payout || {}),
+        provider: "solana_usdc",
+        status: "escrow_funded",
+        amount: Number(current.amount || 0),
+        currency: current.currency || "USDC",
+        sellerWallet,
+        reference: funding.signature,
+        note: "Treasury funded USDC escrow after Dodo fiat collection. Freelancer can withdraw after release.",
+        createdAt: current.seller_payout?.createdAt || now,
+        updatedAt: now,
+        tx: funding.signature,
+        explorerUrl: funding.explorerUrl
+      }
+    }));
+    await recordInvoiceEvent(updated, "escrow_funded", `Treasury funded USDC escrow. Tx ${funding.signature}.`).catch((error) => console.warn("Treasury funding event skipped:", error.message));
+    return withPaymentPlan(updated);
+  }
+
+  if (method === "POST" && (route === "/freelancer/withdraw" || route === "/seller-payout/pay-usdc")) {
+    const { id } = await jsonBody(request);
+    if (!id) throw new ApiError("invoice id is required", 400);
+    const invoices = await readInvoices();
+    const invoice = getOwnedInvoice(invoices, id, user.id);
+    if (!invoice) throw new ApiError("Invoice not found", 404);
+    if (invoice.payment_method !== "dodo") throw new ApiError("Freelancer withdrawal here is only for Dodo-funded escrow invoices.", 400);
+    if (invoice.status !== "Escrow Funded") throw new ApiError("Treasury must fund escrow before freelancer withdrawal.", 400);
+    if (invoice.seller_payout?.status === "seller_paid") throw new ApiError("Freelancer has already withdrawn this payout.", 400);
+    const sellerWallet = String(invoice.seller_wallet || invoice.seller_payout?.sellerWallet || "").trim();
+    if (!sellerWallet) throw new ApiError("Seller Solana wallet is missing.", 400);
+    new PublicKey(sellerWallet);
+
+    const payout = await releaseStablecoinTransfer({ sellerWallet, amount: invoice.amount });
+    const now = new Date().toISOString();
+    const updated = await updateInvoice(id, (current) => ({
+      ...current,
+      status: "Completed",
+      completed_at: current.completed_at || now,
+      fiat_escrow: {
+        ...(current.fiat_escrow || {}),
+        status: "withdrawn",
+        withdrawalTx: payout.signature,
+        withdrawalExplorerUrl: payout.explorerUrl,
+        withdrawnAt: now,
+        updatedAt: now
+      },
       seller_payout: {
         ...(current.seller_payout || {}),
         provider: "solana_usdc",
@@ -1694,7 +1846,7 @@ export async function handleSettleFlowApi(request, segments = []) {
         currency: current.currency || "USDC",
         sellerWallet,
         reference: payout.signature,
-        note: "Automatic seller payout sent from SettleFlow USDC treasury after Dodo collection.",
+        note: "Freelancer withdrew USDC from escrow.",
         createdAt: current.seller_payout?.createdAt || now,
         paidAt: now,
         updatedAt: now,
@@ -1702,10 +1854,20 @@ export async function handleSettleFlowApi(request, segments = []) {
         explorerUrl: payout.explorerUrl,
         sourceTokenAccount: payout.sourceTokenAccount,
         destinationTokenAccount: payout.destinationTokenAccount
+      },
+      stablecoin: {
+        ...(current.stablecoin || {}),
+        status: "released",
+        sellerWallet,
+        releaseTx: payout.signature,
+        releaseExplorerUrl: payout.explorerUrl,
+        sourceTokenAccount: payout.sourceTokenAccount,
+        destinationTokenAccount: payout.destinationTokenAccount,
+        mode: "escrow_withdrawal"
       }
     }));
-    await recordInvoiceEvent(updated, "seller_paid", `Automatic USDC seller payout sent. Tx ${payout.signature}.`).catch((error) => console.warn("Seller payout event skipped:", error.message));
-    await notifyInvoiceEvent(updated, "completed", request.url).catch((error) => console.warn("Seller payout email skipped:", error.message));
+    await recordInvoiceEvent(updated, "withdrawn", `Freelancer withdrew USDC from escrow. Tx ${payout.signature}.`).catch((error) => console.warn("Withdrawal event skipped:", error.message));
+    await notifyInvoiceEvent(updated, "completed", request.url).catch((error) => console.warn("Withdrawal email skipped:", error.message));
     return withPaymentPlan(updated);
   }
 

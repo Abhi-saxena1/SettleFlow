@@ -33,6 +33,21 @@ create table if not exists invoices (
   updated_at timestamptz not null default now()
 );
 
+alter table invoices drop constraint if exists invoices_status_check;
+alter table invoices add constraint invoices_status_check check (
+  status in (
+    'created',
+    'partially_funded',
+    'fully_funded',
+    'fiat_paid',
+    'escrow_funded',
+    'awaiting_release',
+    'released',
+    'completed',
+    'disputed'
+  )
+);
+
 create table if not exists escrow_transactions (
   id uuid primary key default gen_random_uuid(),
   invoice_id text not null references invoices(id) on delete cascade,
@@ -64,13 +79,36 @@ create table if not exists seller_payouts (
   currency text not null default 'USDC',
   provider text not null default 'manual',
   status text not null default 'pending_platform_payout' check (
-    status in ('not_started', 'pending_platform_payout', 'ready_to_pay_seller', 'seller_payout_processing', 'seller_paid', 'failed')
+    status in (
+      'not_started',
+      'pending_platform_payout',
+      'treasury_funding_pending',
+      'escrow_funded',
+      'ready_to_pay_seller',
+      'seller_payout_processing',
+      'seller_paid',
+      'failed'
+    )
   ),
   reference text,
   note text,
   paid_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+alter table seller_payouts drop constraint if exists seller_payouts_status_check;
+alter table seller_payouts add constraint seller_payouts_status_check check (
+  status in (
+    'not_started',
+    'pending_platform_payout',
+    'treasury_funding_pending',
+    'escrow_funded',
+    'ready_to_pay_seller',
+    'seller_payout_processing',
+    'seller_paid',
+    'failed'
+  )
 );
 
 create index if not exists invoices_share_token_idx on invoices(share_token);

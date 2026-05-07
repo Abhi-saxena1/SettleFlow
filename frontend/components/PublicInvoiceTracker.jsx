@@ -14,6 +14,8 @@ const statusStyles = {
   "Partially Funded": "bg-emerald-100 text-emerald-800",
   fully_funded: "bg-blue-100 text-blue-800",
   Funded: "bg-blue-100 text-blue-800",
+  "Fiat Paid": "bg-purple-100 text-purple-800",
+  "Escrow Funded": "bg-blue-100 text-blue-800",
   awaiting_release: "bg-blue-100 text-blue-800",
   released: "bg-green-100 text-green-800",
   completed: "bg-green-100 text-green-800",
@@ -76,10 +78,20 @@ function buildTimeline(invoice) {
       date: invoice.payment?.updatedAt || invoice.payment?.createdAt
     });
     steps.push({
-      label: "Seller payout",
+      label: "Treasury funded escrow",
+      detail: invoice.fiat_escrow?.status === "withdrawn" || invoice.fiat_escrow?.status === "escrow_funded"
+        ? "SettleFlow treasury funded USDC escrow."
+        : "Buyer paid by card. Treasury USDC funding is pending.",
+      done: invoice.fiat_escrow?.status === "withdrawn" || invoice.fiat_escrow?.status === "escrow_funded",
+      date: invoice.fiat_escrow?.fundedAt || invoice.seller_payout?.updatedAt
+    });
+    steps.push({
+      label: "Freelancer withdrawal",
       detail: invoice.seller_payout?.status === "seller_paid"
-        ? `Seller payout completed${invoice.seller_payout?.reference ? ` (${invoice.seller_payout.reference})` : ""}.`
-        : "Automatic USDC payout to seller is pending.",
+        ? `Freelancer withdrew USDC${invoice.seller_payout?.reference ? ` (${invoice.seller_payout.reference})` : ""}.`
+        : invoice.fiat_escrow?.status === "escrow_funded"
+          ? "USDC is locked in escrow. Freelancer withdrawal is pending."
+          : "Waiting for treasury escrow funding first.",
       done: invoice.seller_payout?.status === "seller_paid",
       date: invoice.seller_payout?.paidAt || invoice.seller_payout?.updatedAt
     });
@@ -106,10 +118,12 @@ function buildTimeline(invoice) {
       ? isDodoInvoice
         ? invoice.seller_payout?.status === "seller_paid"
           ? "Buyer payment and seller payout completed."
-          : "Buyer payment completed. Automatic seller payout pending."
+          : "Buyer payment completed. USDC withdrawal pending."
         : "Seller payout completed."
       : isDodoInvoice
-        ? "Awaiting Dodo payment completion."
+        ? dodoPaid
+          ? "Awaiting treasury escrow funding and freelancer withdrawal."
+          : "Awaiting Dodo payment completion."
         : "Awaiting buyer release.",
     done: invoice.status === "Completed" || invoice.status === "released",
     date: invoice.completed_at

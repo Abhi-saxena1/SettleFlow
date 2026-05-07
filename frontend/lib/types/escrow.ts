@@ -2,6 +2,8 @@ export type EscrowInvoiceStatus =
   | "created"
   | "partially_funded"
   | "fully_funded"
+  | "fiat_paid"
+  | "escrow_funded"
   | "awaiting_release"
   | "released"
   | "completed"
@@ -65,6 +67,8 @@ export type InvoiceEvent = {
 export type SellerPayoutStatus =
   | "not_started"
   | "pending_platform_payout"
+  | "treasury_funding_pending"
+  | "escrow_funded"
   | "ready_to_pay_seller"
   | "seller_payout_processing"
   | "seller_paid"

@@ -16,12 +16,14 @@ import Navbar from "../../components/Navbar";
 import {
   createDodoCheckout,
   deleteInvoice,
+  fundDodoEscrowFromTreasury,
   fundStablecoinEscrow,
   getStablecoinConfig,
   importInvoices,
   getInvoices,
   releaseStablecoinEscrow,
-  syncDodoPayment
+  syncDodoPayment,
+  withdrawFreelancerEscrow
 } from "../../lib/api";
 import {
   AUTH_CHANGED_EVENT,
@@ -57,9 +59,11 @@ export default function DashboardPage() {
     const paymentStatus = String(invoice.payment?.status || "").toLowerCase();
 
     if (invoice.status === "Completed" || ["succeeded", "paid", "completed", "captured"].includes(paymentStatus)) {
-      return 5;
+      return invoice.seller_payout?.status === "seller_paid" || invoice.payment_method !== "dodo" ? 5 : 3;
     }
 
+    if (invoice.status === "Escrow Funded") return 4;
+    if (invoice.status === "Fiat Paid") return 3;
     if (invoice.status === "Funded") return 4;
     if (invoice.status === "Partially Funded") return 3;
     if (paymentStatus === "checkout_created") return 2;
@@ -575,6 +579,14 @@ export default function DashboardPage() {
     }
   }
 
+  async function fundDodoEscrow(id) {
+    await runAction(id, fundDodoEscrowFromTreasury);
+  }
+
+  async function withdrawDodoEscrow(id) {
+    await runAction(id, withdrawFreelancerEscrow);
+  }
+
   return (
     <>
       <Navbar />
@@ -671,6 +683,8 @@ export default function DashboardPage() {
                 onSyncPayment={(id) => runAction(id, syncDodoPayment)}
                 onFundStablecoin={startStablecoinFunding}
                 onReleaseStablecoin={startStablecoinRelease}
+                onFundDodoEscrow={fundDodoEscrow}
+                onWithdrawFreelancer={withdrawDodoEscrow}
                 busyId={busyId}
               />
             )}

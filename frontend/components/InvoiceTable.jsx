@@ -7,6 +7,8 @@ const statusStyles = {
   Pending: "bg-yellow-100 text-yellow-800",
   "Partially Funded": "bg-emerald-100 text-emerald-800",
   Funded: "bg-blue-100 text-blue-800",
+  "Fiat Paid": "bg-purple-100 text-purple-800",
+  "Escrow Funded": "bg-blue-100 text-blue-800",
   Completed: "bg-green-100 text-green-800"
 };
 
@@ -36,6 +38,8 @@ const stablecoinStyles = {
 const payoutStyles = {
   not_started: "bg-gray-100 text-gray-700",
   pending_platform_payout: "bg-orange-100 text-orange-800",
+  treasury_funding_pending: "bg-orange-100 text-orange-800",
+  escrow_funded: "bg-blue-100 text-blue-800",
   ready_to_pay_seller: "bg-blue-100 text-blue-800",
   seller_payout_processing: "bg-blue-100 text-blue-800",
   seller_paid: "bg-green-100 text-green-800",
@@ -132,6 +136,8 @@ function InvoiceActions({
   onDodoCheckout,
   onFundStablecoin,
   onReleaseStablecoin,
+  onFundDodoEscrow,
+  onWithdrawFreelancer,
   onSyncPayment
 }) {
   const actionBusy = busyId === invoice.id;
@@ -164,6 +170,29 @@ function InvoiceActions({
       <div className="flex flex-wrap items-center gap-3">
         <button onClick={() => onDelete(invoice.id)} className="text-xs font-bold text-red-600 underline" disabled={actionBusy}>
           Delete
+        </button>
+      </div>
+    );
+  }
+
+  if (paymentMethod === "dodo" && invoice.status === "Fiat Paid") {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => onFundDodoEscrow(invoice.id)} className="button-primary h-10 gap-2 px-4 py-0 leading-none" disabled={actionBusy || !invoice.seller_wallet}>
+          {actionBusy ? <Loader2 className="animate-spin" size={16} /> : "Fund escrow USDC"}
+        </button>
+        <button onClick={() => onSyncPayment(invoice.id)} className="button-secondary px-3 py-2" disabled={actionBusy}>
+          {actionBusy ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+        </button>
+      </div>
+    );
+  }
+
+  if (paymentMethod === "dodo" && invoice.status === "Escrow Funded") {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => onWithdrawFreelancer(invoice.id)} className="button-primary h-10 gap-2 px-4 py-0 leading-none" disabled={actionBusy || !invoice.seller_wallet}>
+          {actionBusy ? <Loader2 className="animate-spin" size={16} /> : "Freelancer withdraw"}
         </button>
       </div>
     );
@@ -242,6 +271,8 @@ function InvoiceCard({
   onDodoCheckout,
   onFundStablecoin,
   onReleaseStablecoin,
+  onFundDodoEscrow,
+  onWithdrawFreelancer,
   onSyncPayment
 }) {
   const paymentStatus = invoice.payment?.status || "not_started";
@@ -314,6 +345,8 @@ function InvoiceCard({
           onDodoCheckout={onDodoCheckout}
           onFundStablecoin={onFundStablecoin}
           onReleaseStablecoin={onReleaseStablecoin}
+          onFundDodoEscrow={onFundDodoEscrow}
+          onWithdrawFreelancer={onWithdrawFreelancer}
           onSyncPayment={onSyncPayment}
         />
       </div>
@@ -327,6 +360,8 @@ export default function InvoiceTable({
   onDelete,
   onFundStablecoin,
   onReleaseStablecoin,
+  onFundDodoEscrow,
+  onWithdrawFreelancer,
   onSyncPayment,
   busyId
 }) {
@@ -342,6 +377,8 @@ export default function InvoiceTable({
             onDodoCheckout={onDodoCheckout}
             onFundStablecoin={onFundStablecoin}
             onReleaseStablecoin={onReleaseStablecoin}
+            onFundDodoEscrow={onFundDodoEscrow}
+            onWithdrawFreelancer={onWithdrawFreelancer}
             onSyncPayment={onSyncPayment}
           />
         ))}
