@@ -444,7 +444,7 @@ export default function InvoiceDetailPage() {
                 {[PAYMENT_STATES.FIAT_PAID, PAYMENT_STATES.TREASURY_FUNDING_PENDING].includes(invoiceStatus) && (
                   <button onClick={fundEscrowFromTreasury} disabled={busy || !invoice.seller_wallet} className="button-primary gap-2 disabled:cursor-not-allowed disabled:opacity-50">
                     {busy ? <Loader2 className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}
-                    Fund escrow USDC
+                    Retry escrow funding
                   </button>
                 )}
                 {[PAYMENT_STATES.ESCROW_FUNDED, PAYMENT_STATES.WORK_SUBMITTED].includes(invoiceStatus) && (

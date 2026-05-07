@@ -169,7 +169,7 @@ function InvoiceActions({
     return (
       <div className="flex flex-wrap items-center gap-2">
         <button onClick={() => onFundDodoEscrow(invoice.id)} className="button-primary h-10 gap-2 px-4 py-0 leading-none" disabled={actionBusy || !invoice.seller_wallet}>
-          {actionBusy ? <Loader2 className="animate-spin" size={16} /> : "Fund escrow USDC"}
+          {actionBusy ? <Loader2 className="animate-spin" size={16} /> : "Retry escrow funding"}
         </button>
         <button onClick={() => onSyncPayment(invoice.id)} className="button-secondary px-3 py-2" disabled={actionBusy}>
           {actionBusy ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}

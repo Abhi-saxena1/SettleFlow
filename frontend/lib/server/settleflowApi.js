@@ -1064,7 +1064,7 @@ function applyDodoPaymentStatus(invoice, paymentStatus, data = {}) {
     },
     seller_payout: paid
       ? {
-          provider: existingPayout.provider || "solana_usdc",
+          provider: existingPayout.provider || "anchor_usdc",
           status: nextPayoutStatus,
           amount: Number(invoice.amount || 0),
           currency: invoice.currency || "USDC",
@@ -1087,6 +1087,94 @@ function applyDodoPaymentStatus(invoice, paymentStatus, data = {}) {
         }
       : existingFiatEscrow
   };
+}
+
+async function fundTreasuryEscrowForInvoice(id, { userId = null, source = "automatic" } = {}) {
+  if (!id) throw new ApiError("invoice id is required", 400);
+
+  const invoices = await readInvoices();
+  const invoice = userId
+    ? getOwnedInvoice(invoices, id, userId)
+    : invoices.find((item) => item.id === id);
+
+  if (!invoice) throw new ApiError("Invoice not found", 404);
+
+  const state = normalizePaymentState(invoice.status);
+  if (state === PAYMENT_STATES.ESCROW_FUNDED || state === PAYMENT_STATES.WORK_SUBMITTED || state === PAYMENT_STATES.RELEASED || state === PAYMENT_STATES.WITHDRAWN) {
+    return withPaymentPlan(invoice);
+  }
+
+  if (state !== PAYMENT_STATES.FIAT_PAID && state !== PAYMENT_STATES.TREASURY_FUNDING_PENDING) {
+    throw new ApiError("Dodo fiat payment must be confirmed before treasury funds escrow.", 400);
+  }
+
+  if (normalizePaymentState(invoice.fiat_escrow?.status) === PAYMENT_STATES.ESCROW_FUNDED) {
+    return withPaymentPlan(invoice);
+  }
+
+  const sellerWallet = String(invoice.seller_wallet || invoice.seller_payout?.sellerWallet || "").trim();
+  if (!sellerWallet) throw new ApiError("Seller Solana wallet is missing. Create invoices with a seller wallet before funding escrow.", 400);
+  new PublicKey(sellerWallet);
+
+  const now = new Date().toISOString();
+  await updateInvoice(id, (current) => transitionInvoiceStatus(current, PAYMENT_STATES.TREASURY_FUNDING_PENDING, {
+    treasury_funding_started_at: current.treasury_funding_started_at || now,
+    fiat_escrow: {
+      ...(current.fiat_escrow || {}),
+      status: PAYMENT_STATES.TREASURY_FUNDING_PENDING,
+      note: source === "automatic" ? "Automatic treasury funding started after Dodo webhook." : "Treasury funding retry started.",
+      updatedAt: now
+    },
+    seller_payout: {
+      ...(current.seller_payout || {}),
+      provider: "anchor_usdc",
+      status: PAYMENT_STATES.TREASURY_FUNDING_PENDING,
+      note: "Treasury is locking USDC into the Anchor escrow vault.",
+      updatedAt: now
+    }
+  }));
+
+  const funding = await initializeAndFundAnchorEscrow({ invoiceId: invoice.id, sellerWallet, amount: invoice.amount });
+  const updated = await updateInvoice(id, (current) => transitionInvoiceStatus(current, PAYMENT_STATES.ESCROW_FUNDED, {
+    funded_at: current.funded_at || now,
+    escrow_funded_at: current.escrow_funded_at || now,
+    fiat_escrow: {
+      ...(current.fiat_escrow || {}),
+      status: PAYMENT_STATES.ESCROW_FUNDED,
+      treasuryTx: funding.signature,
+      treasuryExplorerUrl: funding.explorerUrl,
+      fundedAt: now,
+      updatedAt: now
+    },
+    stablecoin: {
+      ...(current.stablecoin || {}),
+      status: PAYMENT_STATES.ESCROW_FUNDED,
+      escrowTx: funding.signature,
+      escrowExplorerUrl: funding.explorerUrl,
+      escrowAccount: funding.escrowAccount,
+      vaultTokenAccount: funding.vaultTokenAccount,
+      sourceTokenAccount: funding.treasuryTokenAccount,
+      sellerWallet,
+      mode: "anchor_pda_vault"
+    },
+    seller_payout: {
+      ...(current.seller_payout || {}),
+      provider: "anchor_usdc",
+      status: PAYMENT_STATES.ESCROW_FUNDED,
+      amount: Number(current.amount || 0),
+      currency: current.currency || "USDC",
+      sellerWallet,
+      reference: funding.signature,
+      note: "Treasury funded the Anchor escrow vault after Dodo fiat collection.",
+      createdAt: current.seller_payout?.createdAt || now,
+      updatedAt: now,
+      tx: funding.signature,
+      explorerUrl: funding.explorerUrl
+    }
+  }));
+
+  await recordInvoiceEvent(updated, "escrow_funded", `Treasury funded Anchor escrow vault. Tx ${funding.signature}.`).catch((error) => console.warn("Treasury funding event skipped:", error.message));
+  return withPaymentPlan(updated);
 }
 
 function fallbackRiskScore(amount, history = []) {
@@ -1587,6 +1675,10 @@ export async function handleSettleFlowApi(request, segments = []) {
       const updated = await updateInvoice(invoiceId, (invoice) => applyDodoPaymentStatus(invoice, paymentStatus, { ...data, paymentId }));
       if (normalizePaymentState(updated?.status) === PAYMENT_STATES.FIAT_PAID) {
         await recordInvoiceEvent(updated, "fiat_paid", `Dodo fiat payment confirmed for ${Number(updated.amount || 0).toLocaleString()} ${updated.currency || "USDC"}.`).catch((error) => console.warn("Webhook fiat-paid event skipped:", error.message));
+        await fundTreasuryEscrowForInvoice(invoiceId, { source: "automatic" }).catch(async (error) => {
+          console.error("Automatic treasury escrow funding failed:", error);
+          await recordInvoiceEvent(updated, "treasury_funding_failed", error.message || "Automatic treasury escrow funding failed.").catch((eventError) => console.warn("Treasury funding failure event skipped:", eventError.message));
+        });
       }
     }
 
@@ -1798,76 +1890,20 @@ export async function handleSettleFlowApi(request, segments = []) {
     const updated = await updateInvoice(id, (current) => applyDodoPaymentStatus(current, paymentStatus, session));
     if (normalizePaymentState(updated.status) === PAYMENT_STATES.FIAT_PAID) {
       await recordInvoiceEvent(updated, "fiat_paid", `Dodo fiat payment collected for ${Number(updated.amount || 0).toLocaleString()} ${updated.currency || "USDC"}.`).catch((error) => console.warn("Fiat payment event skipped:", error.message));
+      const funded = await fundTreasuryEscrowForInvoice(id, { userId: user.id, source: "automatic" }).catch(async (error) => {
+        await recordInvoiceEvent(updated, "treasury_funding_failed", error.message || "Automatic treasury escrow funding failed.").catch((eventError) => console.warn("Treasury funding failure event skipped:", eventError.message));
+        return null;
+      });
+      if (funded) {
+        return { invoice: funded, session };
+      }
     }
     return { invoice: withPaymentPlan(updated), session };
   }
 
   if (method === "POST" && route === "/treasury/fund-escrow") {
     const { id } = await jsonBody(request);
-    if (!id) throw new ApiError("invoice id is required", 400);
-    const invoices = await readInvoices();
-    const invoice = getOwnedInvoice(invoices, id, user.id);
-    if (!invoice) throw new ApiError("Invoice not found", 404);
-    const state = normalizePaymentState(invoice.status);
-    if (state !== PAYMENT_STATES.FIAT_PAID && state !== PAYMENT_STATES.TREASURY_FUNDING_PENDING) {
-      throw new ApiError("Dodo fiat payment must be confirmed before treasury funds escrow.", 400);
-    }
-    if (normalizePaymentState(invoice.fiat_escrow?.status) === PAYMENT_STATES.ESCROW_FUNDED) throw new ApiError("Treasury has already funded escrow for this invoice.", 400);
-
-    const sellerWallet = String(invoice.seller_wallet || invoice.seller_payout?.sellerWallet || "").trim();
-    if (!sellerWallet) throw new ApiError("Seller Solana wallet is missing. Create invoices with a seller wallet before funding escrow.", 400);
-    new PublicKey(sellerWallet);
-
-    const now = new Date().toISOString();
-    await updateInvoice(id, (current) => transitionInvoiceStatus(current, PAYMENT_STATES.TREASURY_FUNDING_PENDING, {
-      treasury_funding_started_at: current.treasury_funding_started_at || now,
-      fiat_escrow: {
-        ...(current.fiat_escrow || {}),
-        status: PAYMENT_STATES.TREASURY_FUNDING_PENDING,
-        updatedAt: now
-      }
-    }));
-
-    const funding = await initializeAndFundAnchorEscrow({ invoiceId: invoice.id, sellerWallet, amount: invoice.amount });
-    const updated = await updateInvoice(id, (current) => transitionInvoiceStatus(current, PAYMENT_STATES.ESCROW_FUNDED, {
-      funded_at: current.funded_at || now,
-      escrow_funded_at: current.escrow_funded_at || now,
-      fiat_escrow: {
-        ...(current.fiat_escrow || {}),
-        status: PAYMENT_STATES.ESCROW_FUNDED,
-        treasuryTx: funding.signature,
-        treasuryExplorerUrl: funding.explorerUrl,
-        fundedAt: now,
-        updatedAt: now
-      },
-      stablecoin: {
-        ...(current.stablecoin || {}),
-        status: PAYMENT_STATES.ESCROW_FUNDED,
-        escrowTx: funding.signature,
-        escrowExplorerUrl: funding.explorerUrl,
-        escrowAccount: funding.escrowAccount,
-        vaultTokenAccount: funding.vaultTokenAccount,
-        sourceTokenAccount: funding.treasuryTokenAccount,
-        sellerWallet,
-        mode: "anchor_pda_vault"
-      },
-      seller_payout: {
-        ...(current.seller_payout || {}),
-        provider: "anchor_usdc",
-        status: PAYMENT_STATES.ESCROW_FUNDED,
-        amount: Number(current.amount || 0),
-        currency: current.currency || "USDC",
-        sellerWallet,
-        reference: funding.signature,
-        note: "Treasury funded the Anchor escrow vault after Dodo fiat collection.",
-        createdAt: current.seller_payout?.createdAt || now,
-        updatedAt: now,
-        tx: funding.signature,
-        explorerUrl: funding.explorerUrl
-      }
-    }));
-    await recordInvoiceEvent(updated, "escrow_funded", `Treasury funded Anchor escrow vault. Tx ${funding.signature}.`).catch((error) => console.warn("Treasury funding event skipped:", error.message));
-    return withPaymentPlan(updated);
+    return fundTreasuryEscrowForInvoice(id, { userId: user.id, source: "manual_retry" });
   }
 
   if (method === "POST" && route === "/escrow/release") {
