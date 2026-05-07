@@ -180,9 +180,9 @@ pub struct WithdrawFunds<'info> {
         has_one = escrow_token_account
     )]
     pub escrow: Account<'info, EscrowAccount>,
-    /// Seller wallet is stored in escrow state. This account is validated against seller_token_account.
+    /// Seller wallet is stored in escrow state and must sign the withdrawal.
     #[account(constraint = seller.key() == escrow.seller)]
-    pub seller: SystemAccount<'info>,
+    pub seller: Signer<'info>,
     pub mint: Account<'info, Mint>,
     #[account(mut)]
     pub escrow_token_account: Account<'info, TokenAccount>,

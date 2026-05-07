@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Circle, ExternalLink, RefreshCw, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Circle, ExternalLink, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { Connection, Transaction } from "@solana/web3.js";
 import Navbar from "./Navbar";
-import { getTrackedInvoice } from "../lib/api";
+import { confirmTrackedSellerWithdraw, getStablecoinConfig, getTrackedInvoice, prepareTrackedSellerWithdraw } from "../lib/api";
 import { useInvoiceRealtime } from "../lib/useInvoiceRealtime";
 import { PAYMENT_STATES, normalizePaymentState, paymentStateLabel } from "../lib/paymentStates";
 
@@ -47,6 +48,22 @@ function explorerUrl(signature) {
 
 function Pill({ children, className }) {
   return <span className={`inline-flex rounded-full px-4 py-2 text-xs font-black ${className}`}>{children}</span>;
+}
+
+function transactionFromBase64(value) {
+  const binary = window.atob(value);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return Transaction.from(bytes);
+}
+
+function getSolanaProvider() {
+  return window.phantom?.solana || window.solana || window.solflare || window.backpack?.solana || null;
+}
+
+async function waitForDevnetConfirmation(signature) {
+  const config = await getStablecoinConfig();
+  const connection = new Connection(config.rpcUrl || process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com", "confirmed");
+  await connection.confirmTransaction(signature, "confirmed");
 }
 
 function buildTimeline(invoice) {
@@ -153,7 +170,9 @@ function Timeline({ invoice }) {
 export default function PublicInvoiceTracker({ token }) {
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [withdrawBusy, setWithdrawBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [lastUpdated, setLastUpdated] = useState(null);
 
   const loadTrackedInvoice = useCallback(async ({ quiet = false } = {}) => {
@@ -187,6 +206,44 @@ export default function PublicInvoiceTracker({ token }) {
   const releaseUrl = invoice?.stablecoin?.releaseExplorerUrl || explorerUrl(invoice?.stablecoin?.releaseTx);
   const sellerPayoutUrl = invoice?.seller_payout?.explorerUrl || explorerUrl(invoice?.seller_payout?.reference);
   const amountLabel = useMemo(() => invoice ? formatAmount(invoice.amount, invoice.currency) : "", [invoice]);
+  const invoiceStatus = normalizePaymentState(invoice?.status);
+
+  async function withdrawAsSeller() {
+    setWithdrawBusy(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const provider = getSolanaProvider();
+      if (!provider) throw new Error("No Solana wallet detected. Open this with Phantom or another Solana wallet installed.");
+      const connected = await provider.connect();
+      const sellerWallet = connected.publicKey?.toBase58?.() || provider.publicKey?.toBase58?.();
+      if (!sellerWallet) throw new Error("Unable to read connected seller wallet.");
+
+      const prepared = await prepareTrackedSellerWithdraw(token, sellerWallet);
+      const transaction = transactionFromBase64(prepared.transaction);
+      let signature = "";
+
+      if (provider.signAndSendTransaction) {
+        const result = await provider.signAndSendTransaction(transaction);
+        signature = typeof result === "string" ? result : result.signature;
+      } else {
+        const signed = await provider.signTransaction(transaction);
+        const config = await getStablecoinConfig();
+        const connection = new Connection(config.rpcUrl || process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com", "confirmed");
+        signature = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+      }
+
+      await waitForDevnetConfirmation(signature);
+      setInvoice(await confirmTrackedSellerWithdraw(token, signature, sellerWallet));
+      setNotice("Seller withdrawal confirmed on-chain.");
+      setLastUpdated(new Date());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setWithdrawBusy(false);
+    }
+  }
 
   return (
     <>
@@ -205,6 +262,7 @@ export default function PublicInvoiceTracker({ token }) {
         </div>
 
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div>}
+        {notice && <div className="mt-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-bold text-green-700">{notice}</div>}
 
         {loading ? (
           <div className="grid min-h-96 place-items-center rounded-xl border border-black/10 bg-white shadow-md">
@@ -269,6 +327,19 @@ export default function PublicInvoiceTracker({ token }) {
                 </div>
               )}
 
+              {invoiceStatus === PAYMENT_STATES.RELEASED && (
+                <div className="mt-6 rounded-xl border border-leaf/20 bg-mint p-5">
+                  <p className="section-kicker">Seller Withdrawal</p>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-black/55">
+                    Funds are released. Connect the seller wallet assigned to this invoice and withdraw USDC from the Anchor vault.
+                  </p>
+                  <button onClick={withdrawAsSeller} disabled={withdrawBusy} className="button-primary mt-4 gap-2 disabled:cursor-not-allowed disabled:opacity-60">
+                    {withdrawBusy ? <Loader2 className="animate-spin" size={17} /> : <ShieldCheck size={17} />}
+                    Withdraw USDC as seller
+                  </button>
+                </div>
+              )}
+
               <p className="mt-6 text-xs font-bold text-black/35">
                 Last updated {lastUpdated ? formatDate(lastUpdated.toISOString()) : "just now"}. Realtime updates enabled when Supabase Realtime env vars are configured.
               </p>
@@ -277,9 +348,9 @@ export default function PublicInvoiceTracker({ token }) {
             <aside className="grid content-start gap-6">
               <Timeline invoice={invoice} />
               <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-5 shadow-md">
-                <p className="text-sm font-black text-yellow-800">Read-only buyer/seller view</p>
+                <p className="text-sm font-black text-yellow-800">Seller-safe tracking view</p>
                 <p className="mt-2 text-sm font-semibold leading-6 text-yellow-900/70">
-                  This page never exposes service role keys and cannot edit invoices, release funds, or access the seller dashboard.
+                  This page never exposes service role keys. Seller withdrawal requires the seller wallet signature.
                 </p>
               </div>
             </aside>

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, RefreshCw } from "lucide-react";
+import { Connection, Transaction } from "@solana/web3.js";
 import AuthModal from "../../components/AuthModal";
 import InvoiceForm from "../../components/InvoiceForm";
 import InvoiceTable from "../../components/InvoiceTable";
@@ -11,11 +12,13 @@ import {
   createDodoCheckout,
   deleteInvoice,
   fundDodoEscrowFromTreasury,
+  confirmSellerWithdraw,
+  getStablecoinConfig,
   importInvoices,
   getInvoices,
+  prepareSellerWithdraw,
   releaseAnchorEscrow,
-  syncDodoPayment,
-  withdrawFreelancerEscrow
+  syncDodoPayment
 } from "../../lib/api";
 import { PAYMENT_STATES, normalizePaymentState, paymentStateRank } from "../../lib/paymentStates";
 import {
@@ -37,6 +40,22 @@ export default function DashboardPage() {
   const [authMode, setAuthMode] = useState(null);
 
   const isAuthenticated = Boolean(session?.token);
+
+  function transactionFromBase64(value) {
+    const binary = window.atob(value);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return Transaction.from(bytes);
+  }
+
+  function getSolanaProvider() {
+    return window.phantom?.solana || window.solana || window.solflare || window.backpack?.solana || null;
+  }
+
+  async function waitForDevnetConfirmation(signature) {
+    const config = await getStablecoinConfig();
+    const connection = new Connection(config.rpcUrl || process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com", "confirmed");
+    await connection.confirmTransaction(signature, "confirmed");
+  }
 
   function invoiceTimestamp(invoice) {
     return Math.max(
@@ -415,7 +434,33 @@ export default function DashboardPage() {
   }
 
   async function withdrawDodoEscrow(id) {
-    await runAction(id, withdrawFreelancerEscrow);
+    await runAction(id, async (invoiceId) => {
+      const invoice = invoices.find((item) => item.id === invoiceId);
+      if (!invoice) throw new Error("Invoice not found in dashboard cache. Refresh and try again.");
+      const provider = getSolanaProvider();
+      if (!provider) throw new Error("No Solana wallet detected. Open this with Phantom or another Solana wallet installed.");
+      const connected = await provider.connect();
+      const sellerWallet = connected.publicKey?.toBase58?.() || provider.publicKey?.toBase58?.();
+      if (!sellerWallet) throw new Error("Unable to read connected seller wallet.");
+      if (sellerWallet !== invoice.seller_wallet) throw new Error("Connected wallet does not match this invoice seller wallet.");
+
+      const prepared = await prepareSellerWithdraw(invoiceId, sellerWallet);
+      const transaction = transactionFromBase64(prepared.transaction);
+      let signature = "";
+
+      if (provider.signAndSendTransaction) {
+        const result = await provider.signAndSendTransaction(transaction);
+        signature = typeof result === "string" ? result : result.signature;
+      } else {
+        const signed = await provider.signTransaction(transaction);
+        const config = await getStablecoinConfig();
+        const connection = new Connection(config.rpcUrl || process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com", "confirmed");
+        signature = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+      }
+
+      await waitForDevnetConfirmation(signature);
+      return confirmSellerWithdraw(invoiceId, signature, sellerWallet);
+    });
   }
 
   return (

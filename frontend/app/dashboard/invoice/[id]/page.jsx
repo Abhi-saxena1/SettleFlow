@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Circle, Copy, ExternalLink, Loader2, Printer, RefreshCw, Share2, Trash2 } from "lucide-react";
+import { Connection, Transaction } from "@solana/web3.js";
 import AuthModal from "../../../../components/AuthModal";
 import Navbar from "../../../../components/Navbar";
-import { createDodoCheckout, createInvoiceShareLink, deleteInvoice, fundDodoEscrowFromTreasury, getInvoice, releaseAnchorEscrow, syncDodoPayment, withdrawFreelancerEscrow } from "../../../../lib/api";
+import { confirmSellerWithdraw, createDodoCheckout, createInvoiceShareLink, deleteInvoice, fundDodoEscrowFromTreasury, getInvoice, getStablecoinConfig, prepareSellerWithdraw, releaseAnchorEscrow, syncDodoPayment } from "../../../../lib/api";
 import { AUTH_CHANGED_EVENT, getStoredSession, saveSession } from "../../../../lib/authSession";
 import { PAYMENT_STATES, normalizePaymentState, paymentStateLabel } from "../../../../lib/paymentStates";
 
@@ -60,6 +61,22 @@ function Pill({ children, className }) {
       {children}
     </span>
   );
+}
+
+function transactionFromBase64(value) {
+  const binary = window.atob(value);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return Transaction.from(bytes);
+}
+
+function getSolanaProvider() {
+  return window.phantom?.solana || window.solana || window.solflare || window.backpack?.solana || null;
+}
+
+async function waitForDevnetConfirmation(signature) {
+  const config = await getStablecoinConfig();
+  const connection = new Connection(config.rpcUrl || process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com", "confirmed");
+  await connection.confirmTransaction(signature, "confirmed");
 }
 
 function buildTimeline(invoice) {
@@ -272,8 +289,32 @@ export default function InvoiceDetailPage() {
 
   async function withdrawFreelancerFunds() {
     await runInvoiceAction(
-      () => withdrawFreelancerEscrow(invoice.id),
-      () => "Freelancer withdrew USDC."
+      async () => {
+        const provider = getSolanaProvider();
+        if (!provider) throw new Error("No Solana wallet detected. Open this with Phantom or another Solana wallet installed.");
+        const connected = await provider.connect();
+        const sellerWallet = connected.publicKey?.toBase58?.() || provider.publicKey?.toBase58?.();
+        if (!sellerWallet) throw new Error("Unable to read connected seller wallet.");
+        if (sellerWallet !== invoice.seller_wallet) throw new Error("Connected wallet does not match this invoice seller wallet.");
+
+        const prepared = await prepareSellerWithdraw(invoice.id, sellerWallet);
+        const transaction = transactionFromBase64(prepared.transaction);
+        let signature = "";
+
+        if (provider.signAndSendTransaction) {
+          const result = await provider.signAndSendTransaction(transaction);
+          signature = typeof result === "string" ? result : result.signature;
+        } else {
+          const signed = await provider.signTransaction(transaction);
+          const config = await getStablecoinConfig();
+          const connection = new Connection(config.rpcUrl || process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com", "confirmed");
+          signature = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+        }
+
+        await waitForDevnetConfirmation(signature);
+        return confirmSellerWithdraw(invoice.id, signature, sellerWallet);
+      },
+      () => "Seller withdrew USDC."
     );
   }
 

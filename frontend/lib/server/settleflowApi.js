@@ -992,6 +992,10 @@ function isDodoPaid(status) {
   );
 }
 
+function explorerUrl(signature) {
+  return signature ? `https://explorer.solana.com/tx/${signature}?cluster=devnet` : null;
+}
+
 function dodoWebhookStrict() {
   return process.env.DODO_WEBHOOK_STRICT === "true";
 }
@@ -1459,31 +1463,106 @@ async function releaseAnchorEscrow({ invoiceId, sellerWallet }) {
   };
 }
 
-async function withdrawAnchorEscrow({ invoiceId, sellerWallet }) {
+async function buildSellerWithdrawTransaction({ invoiceId, sellerWallet }) {
   const accounts = await anchorEscrowAccounts({ invoiceId, sellerWallet });
   const connection = new Connection(accounts.config.rpcUrl, "confirmed");
   const transaction = new Transaction();
   const sellerInfo = await connection.getAccountInfo(accounts.sellerTokenAccount);
+
   if (!sellerInfo) {
-    transaction.add(createAssociatedTokenAccountInstruction(accounts.treasury.publicKey, accounts.sellerTokenAccount, accounts.seller, accounts.mint));
+    transaction.add(createAssociatedTokenAccountInstruction(accounts.seller, accounts.sellerTokenAccount, accounts.seller, accounts.mint));
   }
+
   transaction.add(anchorInstruction("withdraw_funds", [
     { pubkey: accounts.escrowPda, isSigner: false, isWritable: true },
-    { pubkey: accounts.seller, isSigner: false, isWritable: false },
+    { pubkey: accounts.seller, isSigner: true, isWritable: false },
     { pubkey: accounts.mint, isSigner: false, isWritable: false },
     { pubkey: accounts.vaultTokenAccount, isSigner: false, isWritable: true },
     { pubkey: accounts.sellerTokenAccount, isSigner: false, isWritable: true },
     { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
   ]));
-  const signature = await sendAndConfirmTransaction(connection, transaction, [accounts.treasury], { commitment: "confirmed" });
-  console.log("Anchor escrow withdrawn", { invoiceId, signature, sellerWallet });
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+  transaction.feePayer = accounts.seller;
+  transaction.recentBlockhash = blockhash;
+
   return {
-    signature,
+    transaction: transaction.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64"),
+    sellerWallet: accounts.seller.toBase58(),
+    sellerTokenAccount: accounts.sellerTokenAccount.toBase58(),
     escrowAccount: accounts.escrowPda.toBase58(),
     vaultTokenAccount: accounts.vaultTokenAccount.toBase58(),
-    sellerTokenAccount: accounts.sellerTokenAccount.toBase58(),
-    explorerUrl: `https://explorer.solana.com/tx/${signature}?cluster=devnet`
+    lastValidBlockHeight
   };
+}
+
+async function confirmSellerWithdrawTransaction({ invoice, signature, sellerWallet }) {
+  if (!signature) throw new ApiError("signature is required", 400);
+  const expectedSeller = String(invoice.seller_wallet || invoice.seller_payout?.sellerWallet || "").trim();
+  if (!expectedSeller) throw new ApiError("Seller Solana wallet is missing.", 400);
+  if (sellerWallet && sellerWallet !== expectedSeller) throw new ApiError("Connected wallet does not match this invoice seller wallet.", 403);
+
+  const accounts = await anchorEscrowAccounts({ invoiceId: invoice.id, sellerWallet: expectedSeller });
+  const connection = new Connection(accounts.config.rpcUrl, "confirmed");
+  const status = await connection.getSignatureStatuses([signature], { searchTransactionHistory: true });
+  const value = status.value?.[0];
+
+  if (!value) {
+    throw new ApiError("Withdrawal transaction was not found on Devnet yet. Wait a few seconds and try confirming again.", 400);
+  }
+
+  if (value.err) {
+    throw new ApiError(`Withdrawal transaction failed on-chain: ${JSON.stringify(value.err)}`, 400);
+  }
+
+  if (!["confirmed", "finalized"].includes(value.confirmationStatus)) {
+    throw new ApiError("Withdrawal transaction is not confirmed yet. Wait a few seconds and try again.", 400);
+  }
+
+  const now = new Date().toISOString();
+  const updated = await updateInvoice(invoice.id, (current) => transitionInvoiceStatus(current, PAYMENT_STATES.WITHDRAWN, {
+    completed_at: current.completed_at || now,
+    withdrawn_at: current.withdrawn_at || now,
+    fiat_escrow: {
+      ...(current.fiat_escrow || {}),
+      status: PAYMENT_STATES.WITHDRAWN,
+      withdrawalTx: signature,
+      withdrawalExplorerUrl: explorerUrl(signature),
+      withdrawnAt: now,
+      updatedAt: now
+    },
+    seller_payout: {
+      ...(current.seller_payout || {}),
+      provider: "anchor_usdc",
+      status: PAYMENT_STATES.WITHDRAWN,
+      amount: Number(current.amount || 0),
+      currency: current.currency || "USDC",
+      sellerWallet: expectedSeller,
+      reference: signature,
+      note: "Seller withdrew USDC from the Anchor escrow vault.",
+      createdAt: current.seller_payout?.createdAt || now,
+      paidAt: now,
+      updatedAt: now,
+      tx: signature,
+      explorerUrl: explorerUrl(signature),
+      destinationTokenAccount: accounts.sellerTokenAccount.toBase58()
+    },
+    stablecoin: {
+      ...(current.stablecoin || {}),
+      status: PAYMENT_STATES.WITHDRAWN,
+      sellerWallet: expectedSeller,
+      withdrawalTx: signature,
+      withdrawalExplorerUrl: explorerUrl(signature),
+      escrowAccount: accounts.escrowPda.toBase58(),
+      vaultTokenAccount: accounts.vaultTokenAccount.toBase58(),
+      destinationTokenAccount: accounts.sellerTokenAccount.toBase58(),
+      mode: "seller_signed_anchor_withdrawal"
+    }
+  }));
+
+  await recordInvoiceEvent(updated, "withdrawn", `Seller signed withdrawal from Anchor escrow vault. Tx ${signature}.`).catch((error) => console.warn("Withdrawal event skipped:", error.message));
+  await notifyInvoiceEvent(updated, "withdrawn").catch((error) => console.warn("Withdrawal email skipped:", error.message));
+  return withPaymentPlan(updated);
 }
 
 async function requireAuth(headers) {
@@ -1531,6 +1610,25 @@ export async function handleSettleFlowApi(request, segments = []) {
     const invoice = invoices.find((item) => item.tracking_token === segments[2] || item.share_token === segments[2]);
     if (!invoice) throw new ApiError("Invoice tracking link not found", 404);
     return publicInvoice(invoice);
+  }
+
+  if (method === "POST" && segments[0] === "invoice" && segments[1] === "track" && segments[2] && segments[3] === "withdraw" && segments[4] === "prepare") {
+    const { sellerWallet } = await jsonBody(request);
+    const invoices = await readInvoices();
+    const invoice = invoices.find((item) => item.tracking_token === segments[2] || item.share_token === segments[2]);
+    if (!invoice) throw new ApiError("Invoice tracking link not found", 404);
+    if (normalizePaymentState(invoice.status) !== PAYMENT_STATES.RELEASED) throw new ApiError("Buyer must release escrow before seller withdrawal.", 400);
+    const expectedSeller = String(invoice.seller_wallet || invoice.seller_payout?.sellerWallet || "").trim();
+    if (!sellerWallet || sellerWallet !== expectedSeller) throw new ApiError("Connect the seller wallet assigned to this invoice.", 403);
+    return buildSellerWithdrawTransaction({ invoiceId: invoice.id, sellerWallet });
+  }
+
+  if (method === "POST" && segments[0] === "invoice" && segments[1] === "track" && segments[2] && segments[3] === "withdraw" && segments[4] === "confirm") {
+    const { signature, sellerWallet } = await jsonBody(request);
+    const invoices = await readInvoices();
+    const invoice = invoices.find((item) => item.tracking_token === segments[2] || item.share_token === segments[2]);
+    if (!invoice) throw new ApiError("Invoice tracking link not found", 404);
+    return publicInvoice(await confirmSellerWithdrawTransaction({ invoice, signature, sellerWallet }));
   }
 
   if (method === "POST" && route === "/ai/risk") {
@@ -1958,61 +2056,25 @@ export async function handleSettleFlowApi(request, segments = []) {
     return withPaymentPlan(updated);
   }
 
-  if (method === "POST" && route === "/freelancer/withdraw") {
-    const { id } = await jsonBody(request);
+  if (method === "POST" && route === "/freelancer/withdraw/prepare") {
+    const { id, sellerWallet } = await jsonBody(request);
     if (!id) throw new ApiError("invoice id is required", 400);
     const invoices = await readInvoices();
     const invoice = getOwnedInvoice(invoices, id, user.id);
     if (!invoice) throw new ApiError("Invoice not found", 404);
     if (normalizePaymentState(invoice.status) !== PAYMENT_STATES.RELEASED) throw new ApiError("Buyer must release escrow before seller withdrawal.", 400);
-    const sellerWallet = String(invoice.seller_wallet || invoice.seller_payout?.sellerWallet || "").trim();
-    if (!sellerWallet) throw new ApiError("Seller Solana wallet is missing.", 400);
-    new PublicKey(sellerWallet);
+    const expectedSeller = String(invoice.seller_wallet || invoice.seller_payout?.sellerWallet || "").trim();
+    if (!sellerWallet || sellerWallet !== expectedSeller) throw new ApiError("Connect the seller wallet assigned to this invoice.", 403);
+    return buildSellerWithdrawTransaction({ invoiceId: invoice.id, sellerWallet });
+  }
 
-    const withdrawal = await withdrawAnchorEscrow({ invoiceId: invoice.id, sellerWallet });
-    const now = new Date().toISOString();
-    const updated = await updateInvoice(id, (current) => transitionInvoiceStatus(current, PAYMENT_STATES.WITHDRAWN, {
-      completed_at: current.completed_at || now,
-      withdrawn_at: current.withdrawn_at || now,
-      fiat_escrow: {
-        ...(current.fiat_escrow || {}),
-        status: PAYMENT_STATES.WITHDRAWN,
-        withdrawalTx: withdrawal.signature,
-        withdrawalExplorerUrl: withdrawal.explorerUrl,
-        withdrawnAt: now,
-        updatedAt: now
-      },
-      seller_payout: {
-        ...(current.seller_payout || {}),
-        provider: "anchor_usdc",
-        status: PAYMENT_STATES.WITHDRAWN,
-        amount: Number(current.amount || 0),
-        currency: current.currency || "USDC",
-        sellerWallet,
-        reference: withdrawal.signature,
-        note: "Seller withdrew USDC from the Anchor escrow vault.",
-        createdAt: current.seller_payout?.createdAt || now,
-        paidAt: now,
-        updatedAt: now,
-        tx: withdrawal.signature,
-        explorerUrl: withdrawal.explorerUrl,
-        destinationTokenAccount: withdrawal.sellerTokenAccount
-      },
-      stablecoin: {
-        ...(current.stablecoin || {}),
-        status: PAYMENT_STATES.WITHDRAWN,
-        sellerWallet,
-        withdrawalTx: withdrawal.signature,
-        withdrawalExplorerUrl: withdrawal.explorerUrl,
-        escrowAccount: withdrawal.escrowAccount,
-        vaultTokenAccount: withdrawal.vaultTokenAccount,
-        destinationTokenAccount: withdrawal.sellerTokenAccount,
-        mode: "anchor_withdrawal"
-      }
-    }));
-    await recordInvoiceEvent(updated, "withdrawn", `Seller withdrew USDC from Anchor escrow vault. Tx ${withdrawal.signature}.`).catch((error) => console.warn("Withdrawal event skipped:", error.message));
-    await notifyInvoiceEvent(updated, "withdrawn", request.url).catch((error) => console.warn("Withdrawal email skipped:", error.message));
-    return withPaymentPlan(updated);
+  if (method === "POST" && route === "/freelancer/withdraw/confirm") {
+    const { id, signature, sellerWallet } = await jsonBody(request);
+    if (!id) throw new ApiError("invoice id is required", 400);
+    const invoices = await readInvoices();
+    const invoice = getOwnedInvoice(invoices, id, user.id);
+    if (!invoice) throw new ApiError("Invoice not found", 404);
+    return confirmSellerWithdrawTransaction({ invoice, signature, sellerWallet });
   }
 
   throw new ApiError(`Route ${method} ${route} not found`, 404);

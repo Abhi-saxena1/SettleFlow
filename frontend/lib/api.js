@@ -98,10 +98,31 @@ export function fundDodoEscrowFromTreasury(id) {
   });
 }
 
-export function withdrawFreelancerEscrow(id) {
-  return request("/freelancer/withdraw", {
+export function prepareSellerWithdraw(id, sellerWallet) {
+  return request("/freelancer/withdraw/prepare", {
     method: "POST",
-    body: JSON.stringify({ id })
+    body: JSON.stringify({ id, sellerWallet })
+  });
+}
+
+export function confirmSellerWithdraw(id, signature, sellerWallet) {
+  return request("/freelancer/withdraw/confirm", {
+    method: "POST",
+    body: JSON.stringify({ id, signature, sellerWallet })
+  });
+}
+
+export function prepareTrackedSellerWithdraw(token, sellerWallet) {
+  return request(`/invoice/track/${token}/withdraw/prepare`, {
+    method: "POST",
+    body: JSON.stringify({ sellerWallet })
+  });
+}
+
+export function confirmTrackedSellerWithdraw(token, signature, sellerWallet) {
+  return request(`/invoice/track/${token}/withdraw/confirm`, {
+    method: "POST",
+    body: JSON.stringify({ signature, sellerWallet })
   });
 }
 
