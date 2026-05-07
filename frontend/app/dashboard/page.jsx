@@ -424,6 +424,27 @@ export default function DashboardPage() {
     return "USDC transfer failed. Check that your wallet is on Solana Devnet and has devnet SOL plus devnet USDC.";
   }
 
+  async function waitForSolanaSignature(connection, signature) {
+    for (let attempt = 0; attempt < 45; attempt += 1) {
+      const { value } = await connection.getSignatureStatuses([signature], { searchTransactionHistory: true });
+      const status = value?.[0];
+
+      if (status?.err) {
+        throw new Error(`Solana transaction failed: ${JSON.stringify(status.err)}`);
+      }
+
+      if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") {
+        return status;
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 2000));
+    }
+
+    throw new Error(
+      `Transaction was sent but not confirmed yet. Signature: ${signature}. Wait a minute, click Refresh, then check Solana Explorer if needed.`
+    );
+  }
+
   async function startStablecoinFunding(invoice, paymentStage = "full") {
     if (!requireLogin()) {
       return;
@@ -500,8 +521,9 @@ export default function DashboardPage() {
         )
       );
 
+      const latestBlockhash = await connection.getLatestBlockhash("confirmed");
       transaction.feePayer = buyerPublicKey;
-      transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      transaction.recentBlockhash = latestBlockhash.blockhash;
 
       const simulation = await connection.simulateTransaction(transaction);
       if (simulation.value.err) {
@@ -512,7 +534,8 @@ export default function DashboardPage() {
         ? await provider.signAndSendTransaction(transaction)
         : { signature: await connection.sendRawTransaction((await provider.signTransaction(transaction)).serialize()) };
 
-      await connection.confirmTransaction(signature, "confirmed");
+      setNotice(`USDC transaction sent. Waiting for devnet confirmation: ${signature.slice(0, 8)}...`);
+      await waitForSolanaSignature(connection, signature);
       const updated = await fundStablecoinEscrow(invoice.id, buyerPublicKey.toBase58(), signature, paymentStage);
       setInvoices((current) => {
         const next = current.map((item) => (item.id === invoice.id ? updated : item));
