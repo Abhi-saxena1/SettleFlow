@@ -20,6 +20,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
     payment_method: "usdc"
   });
   const [loading, setLoading] = useState(false);
+  const requiresSellerWallet = form.payment_method === "usdc";
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -35,6 +36,10 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
 
     setLoading(true);
     try {
+      if (requiresSellerWallet && !form.seller_wallet.trim()) {
+        throw new Error("Seller wallet is required for USDC escrow invoices.");
+      }
+
       const invoice = await createInvoice({
         ...form,
         amount: Number(form.amount),
@@ -126,13 +131,13 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
           </label>
         </div>
         <label className="grid gap-2 text-sm font-bold text-black/55">
-          Seller wallet address
+          Seller wallet address {requiresSellerWallet ? "" : "(optional for Dodo)"}
           <input
-            required
+            required={requiresSellerWallet}
             value={form.seller_wallet}
             onChange={(event) => updateField("seller_wallet", event.target.value)}
             className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
-            placeholder="Solana wallet for USDC release"
+            placeholder={requiresSellerWallet ? "Solana wallet for USDC release" : "Only needed if you also use USDC escrow"}
           />
         </label>
         <label className="grid gap-2 text-sm font-bold text-black/55">
