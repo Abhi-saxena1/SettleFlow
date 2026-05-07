@@ -558,34 +558,13 @@ export default function DashboardPage() {
     setError("");
 
     try {
-      const provider = getSolanaProvider();
-      let defaultWallet = "";
-
-      if (provider) {
-        const response = await provider.connect({ onlyIfTrusted: true }).catch(() => null);
-        defaultWallet = response?.publicKey?.toString() || provider.publicKey?.toString() || "";
-      }
-
-      const sellerWallet = window.prompt(
-        "Enter the SELLER Solana wallet address to receive USDC. Do not use the buyer wallet unless you are only testing with one account:",
-        defaultWallet
-      )?.trim();
-
+      const invoice = invoices.find((item) => item.id === id);
+      const sellerWallet = (invoice?.seller_wallet || invoice?.stablecoin?.sellerWallet || "").trim();
       if (!sellerWallet) {
-        return;
+        throw new Error("This invoice does not have a seller wallet saved. Create the invoice with a seller Solana wallet before releasing USDC.");
       }
 
       new PublicKey(sellerWallet);
-      const invoice = invoices.find((item) => item.id === id);
-      if (invoice?.stablecoin?.buyerWallet === sellerWallet) {
-        const useSameWallet = window.confirm(
-          "This seller address is the same as the buyer wallet that funded escrow. Continue anyway?"
-        );
-
-        if (!useSameWallet) {
-          return;
-        }
-      }
       await runAction(id, (invoiceId) => releaseStablecoinEscrow(invoiceId, sellerWallet));
     } catch (err) {
       setError(

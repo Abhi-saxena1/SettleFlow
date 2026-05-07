@@ -1614,11 +1614,12 @@ export async function handleSettleFlowApi(request, segments = []) {
   }
 
   if (method === "POST" && route === "/stablecoin/release") {
-    const { id, sellerWallet } = await jsonBody(request);
+    const { id, sellerWallet: requestedSellerWallet } = await jsonBody(request);
     const invoices = await readInvoices();
     const invoice = getOwnedInvoice(invoices, id, user.id);
     if (!invoice) throw new ApiError("Invoice not found", 404);
-    if (!sellerWallet) throw new ApiError("sellerWallet is required for real USDC release", 400);
+    const sellerWallet = String(requestedSellerWallet || invoice.seller_wallet || invoice.stablecoin?.sellerWallet || "").trim();
+    if (!sellerWallet) throw new ApiError("Seller wallet is missing on this invoice. Add the seller Solana wallet before releasing USDC.", 400);
     if (!invoice.upfront_paid || !invoice.remaining_paid) throw new ApiError("Lock both upfront and remaining USDC before releasing escrow", 400);
     const balance = await escrowTokenBalance();
     if (balance.uiAmount < Number(invoice.amount)) throw new ApiError(`Escrow has ${balance.uiAmount} USDC, but this invoice requires ${invoice.amount} USDC before release.`, 400);

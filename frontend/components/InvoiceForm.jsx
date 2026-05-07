@@ -128,6 +128,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
         <label className="grid gap-2 text-sm font-bold text-black/55">
           Seller wallet address
           <input
+            required
             value={form.seller_wallet}
             onChange={(event) => updateField("seller_wallet", event.target.value)}
             className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
