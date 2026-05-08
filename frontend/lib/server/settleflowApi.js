@@ -118,11 +118,12 @@ async function writeJson(file, data) {
 }
 
 function supabaseClient() {
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  const configuredUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_PROJECT_URL;
+  if (!configuredUrl || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return null;
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL.trim().replace(/\/$/, "");
+  const supabaseUrl = configuredUrl.trim().replace(/\/$/, "");
   if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(supabaseUrl)) {
     throw new ApiError(
       "SUPABASE_URL is invalid. Use the Project URL from Supabase Settings > API, like https://your-project-ref.supabase.co. Do not use the app.supabase.com dashboard URL.",
@@ -165,6 +166,17 @@ function isMissingSupabaseTable(error) {
 
 function supabaseEnabled() {
   return Boolean(supabaseClient());
+}
+
+function shouldUseJsonFallback() {
+  return !process.env.VERCEL;
+}
+
+function requireAuthSupabase(supabase) {
+  if (supabase) return;
+  if (process.env.VERCEL) {
+    throw new ApiError("Auth storage is not connected. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Vercel, then redeploy.", 500);
+  }
 }
 
 function toUserRecord(user) {
@@ -505,12 +517,14 @@ async function readUsers() {
       .order("created_at", { ascending: false });
 
     if (error) {
+      if (!shouldUseJsonFallback()) throw new ApiError(`Unable to read accounts: ${supabaseErrorMessage(error)}`, 500);
       console.error("Supabase readUsers failed, using JSON fallback:", supabaseErrorMessage(error));
     } else {
       return data.map(fromUserRecord);
     }
   }
 
+  requireAuthSupabase(supabase);
   return readJson(USERS_FILE, []);
 }
 
@@ -536,6 +550,7 @@ async function writeUsers(users) {
       .upsert(normalizedUsers.map(toUserRecord), { onConflict: "email" });
 
     if (error) {
+      if (!shouldUseJsonFallback()) throw new ApiError(`Unable to save accounts: ${supabaseErrorMessage(error)}`, 500);
       console.error("Supabase writeUsers failed, using JSON fallback:", supabaseErrorMessage(error));
     } else {
       memoryStore[USERS_FILE] = normalizedUsers;
@@ -543,6 +558,7 @@ async function writeUsers(users) {
     }
   }
 
+  requireAuthSupabase(supabase);
   await writeJson(USERS_FILE, normalizedUsers);
 }
 
@@ -552,6 +568,19 @@ async function findUserByEmail(email) {
 
   const supabase = supabaseClient();
   if (supabase) {
+    const expectedId = userIdFromEmail(normalizedEmail);
+    const { data: idRecord, error: idError } = await supabase
+      .from(AUTH_USERS_TABLE)
+      .select("*")
+      .eq("id", expectedId)
+      .maybeSingle();
+
+    if (idError) {
+      throw new ApiError(`Unable to check account: ${supabaseErrorMessage(idError)}`, 500);
+    }
+
+    if (idRecord) return fromUserRecord(idRecord);
+
     const { data, error } = await supabase
       .from(AUTH_USERS_TABLE)
       .select("*")
@@ -579,6 +608,7 @@ async function findUserByEmail(email) {
     return matchedRecord ? fromUserRecord(matchedRecord) : null;
   }
 
+  requireAuthSupabase(supabase);
   const users = await readUsers();
   return users.find((user) => normalizeEmail(user.email) === normalizedEmail) || null;
 }
@@ -605,6 +635,7 @@ async function saveUser(user) {
     return fromUserRecord(data);
   }
 
+  requireAuthSupabase(supabase);
   const users = await readUsers();
   const nextUsers = users.filter((item) => normalizeEmail(item.email) !== normalizedUser.email);
   nextUsers.unshift(normalizedUser);
@@ -638,6 +669,7 @@ async function createUser(user) {
     return fromUserRecord(data);
   }
 
+  requireAuthSupabase(supabase);
   const existingUser = await findUserByEmail(normalizedUser.email);
   if (existingUser) {
     throw new ApiError("An account with this email already exists. Please log in instead.", 409);
