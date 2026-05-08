@@ -20,6 +20,8 @@ const USERS_FILE = path.join(DATA_DIR, "users.json");
 const ITERATIONS = 120000;
 const KEY_LENGTH = 64;
 const DIGEST = "sha512";
+const AUTH_USERS_TABLE = "settleflow_users";
+const APP_INVOICES_TABLE = "settleflow_invoices";
 const memoryStore = globalThis.__settleflowMemoryStore || {
   [INVOICES_FILE]: null,
   [USERS_FILE]: null
@@ -454,7 +456,7 @@ async function readInvoices() {
 
   if (supabase) {
     const { data, error } = await supabase
-      .from("settleflow_invoices")
+      .from(APP_INVOICES_TABLE)
       .select("*")
       .order("updated_at", { ascending: false });
 
@@ -478,7 +480,7 @@ async function writeInvoices(invoices) {
   if (supabase) {
     const records = invoices.filter((invoice) => invoice?.id && invoice?.ownerUserId).map(toInvoiceRecord);
     const { error } = await supabase
-      .from("settleflow_invoices")
+      .from(APP_INVOICES_TABLE)
       .upsert(records, { onConflict: "id" });
 
     if (error) {
@@ -498,7 +500,7 @@ async function readUsers() {
 
   if (supabase) {
     const { data, error } = await supabase
-      .from("settleflow_users")
+      .from(AUTH_USERS_TABLE)
       .select("*")
       .order("created_at", { ascending: false });
 
@@ -530,7 +532,7 @@ async function writeUsers(users) {
 
   if (supabase) {
     const { error } = await supabase
-      .from("settleflow_users")
+      .from(AUTH_USERS_TABLE)
       .upsert(normalizedUsers.map(toUserRecord), { onConflict: "email" });
 
     if (error) {
@@ -551,7 +553,7 @@ async function findUserByEmail(email) {
   const supabase = supabaseClient();
   if (supabase) {
     const { data, error } = await supabase
-      .from("settleflow_users")
+      .from(AUTH_USERS_TABLE)
       .select("*")
       .eq("email", normalizedEmail)
       .maybeSingle();
@@ -560,7 +562,21 @@ async function findUserByEmail(email) {
       throw new ApiError(`Unable to check account: ${supabaseErrorMessage(error)}`, 500);
     }
 
-    return data ? fromUserRecord(data) : null;
+    if (data) return fromUserRecord(data);
+
+    // Accounts created during earlier testing may have mixed-case or spaced emails.
+    // Auth still reads from settleflow_users only; this fallback normalizes old rows.
+    const { data: records, error: fallbackError } = await supabase
+      .from(AUTH_USERS_TABLE)
+      .select("*")
+      .limit(1000);
+
+    if (fallbackError) {
+      throw new ApiError(`Unable to check account: ${supabaseErrorMessage(fallbackError)}`, 500);
+    }
+
+    const matchedRecord = records?.find((record) => normalizeEmail(record.email) === normalizedEmail);
+    return matchedRecord ? fromUserRecord(matchedRecord) : null;
   }
 
   const users = await readUsers();
@@ -577,8 +593,8 @@ async function saveUser(user) {
   const supabase = supabaseClient();
   if (supabase) {
     const { data, error } = await supabase
-      .from("settleflow_users")
-      .upsert(toUserRecord(normalizedUser), { onConflict: "email" })
+      .from(AUTH_USERS_TABLE)
+      .upsert(toUserRecord(normalizedUser), { onConflict: "id" })
       .select("*")
       .single();
 
@@ -606,7 +622,7 @@ async function createUser(user) {
   const supabase = supabaseClient();
   if (supabase) {
     const { data, error } = await supabase
-      .from("settleflow_users")
+      .from(AUTH_USERS_TABLE)
       .insert(toUserRecord(normalizedUser))
       .select("*")
       .single();
@@ -639,13 +655,13 @@ async function clearAllAuthData() {
 
   if (supabase) {
     const { error: invoiceError } = await supabase
-      .from("settleflow_invoices")
+      .from(APP_INVOICES_TABLE)
       .delete()
       .neq("id", "__never__");
 
     if (invoiceError) {
       if (isMissingSupabaseTable(invoiceError)) {
-        skipped.push("settleflow_invoices");
+        skipped.push(APP_INVOICES_TABLE);
       } else {
         throw new ApiError(`Unable to clear invoices: ${supabaseErrorMessage(invoiceError)}`, 500);
       }
@@ -667,13 +683,13 @@ async function clearAllAuthData() {
     }
 
     const { error: userError } = await supabase
-      .from("settleflow_users")
+      .from(AUTH_USERS_TABLE)
       .delete()
       .neq("id", "__never__");
 
     if (userError) {
       if (isMissingSupabaseTable(userError)) {
-        skipped.push("settleflow_users");
+        skipped.push(AUTH_USERS_TABLE);
       } else {
         throw new ApiError(`Unable to clear users: ${supabaseErrorMessage(userError)}`, 500);
       }
@@ -800,7 +816,7 @@ async function updateInvoice(id, updater) {
 
   if (supabase) {
     const { data: record, error: readError } = await supabase
-      .from("settleflow_invoices")
+      .from(APP_INVOICES_TABLE)
       .select("*")
       .eq("id", id)
       .maybeSingle();
@@ -810,7 +826,7 @@ async function updateInvoice(id, updater) {
     } else if (record) {
       const updatedInvoice = updater(fromInvoiceRecord(record));
       const { data, error } = await supabase
-        .from("settleflow_invoices")
+        .from(APP_INVOICES_TABLE)
         .upsert(toInvoiceRecord(updatedInvoice), { onConflict: "id" })
         .select("*")
         .single();
@@ -1924,7 +1940,7 @@ export async function handleSettleFlowApi(request, segments = []) {
 
     if (supabase) {
       const { error } = await supabase
-        .from("settleflow_invoices")
+        .from(APP_INVOICES_TABLE)
         .delete()
         .eq("id", segments[1])
         .eq("owner_user_id", user.id);
