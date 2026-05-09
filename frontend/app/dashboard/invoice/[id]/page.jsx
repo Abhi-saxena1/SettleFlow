@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Circle, Copy, ExternalLink, Loader2, Printer, RefreshCw, Share2, Trash2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Circle, Copy, ExternalLink, Loader2, Printer, Share2, Trash2 } from "lucide-react";
 import { Connection, Transaction } from "@solana/web3.js";
 import AuthModal from "../../../../components/AuthModal";
 import Navbar from "../../../../components/Navbar";
-import { confirmSellerWithdraw, createDodoCheckout, createInvoiceShareLink, deleteInvoice, getInvoice, getStablecoinConfig, prepareSellerWithdraw, releaseAnchorEscrow, syncDodoPayment } from "../../../../lib/api";
+import { confirmSellerWithdraw, createDodoCheckout, createInvoiceShareLink, deleteInvoice, getInvoice, getStablecoinConfig, prepareSellerWithdraw, releaseAnchorEscrow } from "../../../../lib/api";
 import { AUTH_CHANGED_EVENT, getStoredSession, saveSession } from "../../../../lib/authSession";
 import { PAYMENT_STATES, normalizePaymentState, paymentStateLabel } from "../../../../lib/paymentStates";
 
@@ -23,12 +23,6 @@ const statusStyles = {
   withdrawn: "bg-green-100 text-green-800",
   refunded: "bg-gray-100 text-gray-700",
   disputed: "bg-red-100 text-red-800"
-};
-
-const riskStyles = {
-  Low: "bg-green-100 text-green-800",
-  Medium: "bg-orange-100 text-orange-800",
-  High: "bg-red-100 text-red-800"
 };
 
 function formatAmount(value, currency = "USDC") {
@@ -53,14 +47,6 @@ function shortHash(value) {
 
 function explorerUrl(signature) {
   return signature ? `https://explorer.solana.com/tx/${signature}?cluster=devnet` : "";
-}
-
-function Pill({ children, className }) {
-  return (
-    <span className={`inline-flex min-h-9 items-center rounded-full px-4 py-2 text-xs font-black ${className}`}>
-      {children}
-    </span>
-  );
 }
 
 function transactionFromBase64(value) {
@@ -410,21 +396,6 @@ export default function InvoiceDetailPage() {
                 <p className="text-3xl font-black text-ink">{formatAmount(invoice.amount, invoice.currency)}</p>
               </div>
 
-              <div className="mt-6 flex flex-wrap gap-2">
-                <Pill className={statusStyles[normalizePaymentState(invoice.status)] || statusStyles.draft}>{paymentStateLabel(invoice.status)}</Pill>
-                <Pill className="bg-mint text-ink">Dodo to Anchor escrow</Pill>
-                <Pill className={riskStyles[invoice.risk?.risk_level || "Low"]}>
-                  {invoice.risk?.risk_level || "Low"} risk - {invoice.risk?.risk_score || 0}
-                </Pill>
-                {invoice.payment?.status && ![PAYMENT_STATES.DRAFT, "not_started"].includes(invoice.payment.status) && <Pill className="bg-purple-100 text-purple-800">Dodo {String(invoice.payment?.status).replaceAll("_", " ")}</Pill>}
-                {invoice.seller_payout?.status && normalizePaymentState(invoice.seller_payout?.status) !== PAYMENT_STATES.DRAFT && (
-                  <Pill className={statusStyles[normalizePaymentState(invoice.seller_payout?.status)] || "bg-orange-100 text-orange-800"}>
-                    Withdrawal {formatStatus(invoice.seller_payout?.status)}
-                  </Pill>
-                )}
-                {invoice.stablecoin?.status && normalizePaymentState(invoice.stablecoin?.status) !== PAYMENT_STATES.DRAFT && <Pill className="bg-emerald-100 text-emerald-800">Vault {formatStatus(invoice.stablecoin?.status)}</Pill>}
-              </div>
-
               <div className="mt-8 grid gap-5 md:grid-cols-3">
                 <div className="rounded-xl bg-mint p-5">
                   <p className="text-xs font-black uppercase tracking-[0.16em] text-black/35">Buyer</p>
@@ -443,16 +414,10 @@ export default function InvoiceDetailPage() {
                 </div>
               </div>
 
-              <div className="mt-8 grid gap-4 md:grid-cols-2">
-                <div className="rounded-xl border border-black/10 p-5">
-                  <p className="section-kicker">Escrow Amount</p>
-                  <p className="mt-3 text-2xl font-black text-ink">{formatAmount(invoice.amount, invoice.currency)}</p>
-                  <p className="mt-2 text-sm font-semibold text-black/55">Full invoice amount secured through one escrow vault.</p>
-                </div>
-                <div className="rounded-xl border border-black/10 p-5">
-                  <p className="section-kicker">AI Recommendation</p>
-                  <p className="mt-3 text-sm font-semibold leading-6 text-black/60">{invoice.risk?.recommendation}</p>
-                </div>
+              <div className="mt-8 rounded-xl border border-black/10 p-5">
+                <p className="section-kicker">Escrow Amount</p>
+                <p className="mt-3 text-2xl font-black text-ink">{formatAmount(invoice.amount, invoice.currency)}</p>
+                <p className="mt-2 text-sm font-semibold text-black/55">Full invoice amount secured through one escrow vault.</p>
               </div>
 
               <div className="mt-8 flex flex-wrap gap-3 border-t border-black/5 pt-5">
@@ -467,14 +432,6 @@ export default function InvoiceDetailPage() {
                     Open Dodo checkout
                   </a>
                 ))}
-                <button
-                  onClick={() => runInvoiceAction(() => syncDodoPayment(invoice.id), () => "Dodo payment status synced.")}
-                  disabled={busy || !invoice.payment?.sessionId}
-                  className="button-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {busy ? <Loader2 className="animate-spin" size={17} /> : <RefreshCw size={17} />}
-                  Sync Dodo
-                </button>
                 {[PAYMENT_STATES.FIAT_PAID, PAYMENT_STATES.TREASURY_FUNDING_PENDING].includes(invoiceStatus) && (
                   <span className="inline-flex items-center rounded-full bg-orange-50 px-5 py-3 text-sm font-black text-orange-800">
                     Treasury securing escrow...
