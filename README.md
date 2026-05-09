@@ -18,6 +18,9 @@ Small and medium businesses frequently face:
 5.trust issues between buyers and suppliers
 
 SettleFlow introduces programmable escrow infrastructure where funds can be securely locked, tracked, and released through smart contract logic.
+## Status
+
+MVP currently running on Solana Devnet for testing and development purposes.
 
 Core Features
 -Escrow-protected settlements
@@ -49,7 +52,7 @@ Funds are routed through a treasury layer before interacting with the escrow sma
 
 
 
-Product Workflow
+##Product Workflow
 1. Invoice Creation
 
 Businesses create invoices and define payment milestones.
@@ -137,7 +140,7 @@ settleflow-mvp/
           lib.rs
 ```
 
-Dodo Payments Integration
+#Dodo Payments Integration
 
 SettleFlow uses Dodo Payments Checkout Sessions for invoice payment collection.
 
@@ -247,8 +250,8 @@ Required private environment variables:
 - Webhook signing secret
 
 
-Vision
-SettleFlow is building programmable payment infrastructure for global SMEs using stablecoins and smart contract escrow.
+##Vision
+SettleFlow aims to build programmable payment infrastructure for global SMEs using stablecoins and smart contract escrow.
 
 The goal is to make business settlements:
 
@@ -257,7 +260,7 @@ The goal is to make business settlements:
 3.programmable
 4.globally accessible
 
-License
+#License
 
 MIT License
 
