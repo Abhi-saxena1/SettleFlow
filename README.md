@@ -35,7 +35,7 @@ Core Features
 -AI-assisted transaction risk scoring
 
 
-Payment Architecture
+## Payment Architecture
 Buyer Card Payment
         ↓
 Dodo Payments
@@ -52,7 +52,7 @@ Funds are routed through a treasury layer before interacting with the escrow sma
 
 
 
-##Product Workflow
+## Product Workflow
 1. Invoice Creation
 
 Businesses create invoices and define payment milestones.
@@ -77,7 +77,7 @@ Payments are released based on milestone completion.
 
 The seller withdraws settled funds securely.
 
-Tech Stack
+## Tech Stack
 -Frontend
 -Next.js
 -TypeScript
@@ -140,7 +140,7 @@ settleflow-mvp/
           lib.rs
 ```
 
-#Dodo Payments Integration
+## Dodo Payments Integration
 
 SettleFlow uses Dodo Payments Checkout Sessions for invoice payment collection.
 
@@ -152,7 +152,7 @@ Required Setup
 -POST /dodo/webhook
 
 
-Smart Contract
+## Smart Contract
 
 The escrow infrastructure is powered by Solana Anchor programs.
 
@@ -250,7 +250,7 @@ Required private environment variables:
 - Webhook signing secret
 
 
-##Vision
+## Vision
 SettleFlow aims to build programmable payment infrastructure for global SMEs using stablecoins and smart contract escrow.
 
 The goal is to make business settlements:
@@ -260,7 +260,7 @@ The goal is to make business settlements:
 3.programmable
 4.globally accessible
 
-#License
+# License
 
 MIT License
 
