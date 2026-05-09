@@ -4,7 +4,6 @@ import DashboardPreview from "../components/DashboardPreview";
 import FeaturesSection from "../components/FeaturesSection";
 import HeroSection from "../components/HeroSection";
 import Navbar from "../components/Navbar";
-import TrustSection from "../components/TrustSection";
 
 export default function HomePage() {
   return (
@@ -12,7 +11,6 @@ export default function HomePage() {
       <Navbar />
       <main>
         <HeroSection />
-        <TrustSection />
         <FeaturesSection />
         <AiRiskCard />
         <DashboardPreview />

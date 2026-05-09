@@ -483,9 +483,6 @@ export default function DashboardPage() {
             <p className="mt-4 max-w-2xl leading-7 text-black/60">
               Create invoices, collect funds through real Dodo Payments checkout sessions, release escrow, and review AI risk signals.
             </p>
-            <p className="mt-3 inline-flex rounded-full border border-yellow-200 bg-yellow-50 px-4 py-2 text-sm font-black text-yellow-800">
-              Running on Devnet (Test Mode)
-            </p>
           </div>
           <button onClick={isAuthenticated ? loadInvoices : promptLogin} className="button-secondary gap-2">
             <RefreshCw size={17} />
