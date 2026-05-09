@@ -197,6 +197,7 @@ export default function InvoiceDetailPage() {
   const escrowUrl = invoice?.stablecoin?.escrowExplorerUrl || explorerUrl(invoice?.stablecoin?.escrowTx);
   const releaseUrl = invoice?.stablecoin?.releaseExplorerUrl || explorerUrl(invoice?.stablecoin?.releaseTx);
   const invoiceStatus = normalizePaymentState(invoice?.status);
+  const fundingError = invoice?.fiat_escrow?.fundingError || invoice?.stablecoin?.fundingError;
 
   useEffect(() => {
     setSession(getStoredSession());
@@ -373,6 +374,11 @@ export default function InvoiceDetailPage() {
             {notice}
           </div>
         )}
+        {invoice && fundingError && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+            {fundingError}
+          </div>
+        )}
 
         {loading ? (
           <div className="grid min-h-96 place-items-center rounded-xl border border-black/10 bg-white shadow-md">
@@ -437,8 +443,11 @@ export default function InvoiceDetailPage() {
                   </a>
                 ))}
                 {[PAYMENT_STATES.FIAT_PAID, PAYMENT_STATES.TREASURY_FUNDING_PENDING].includes(invoiceStatus) && (
-                  <span className="inline-flex items-center rounded-full bg-orange-50 px-5 py-3 text-sm font-black text-orange-800">
-                    Treasury securing escrow...
+                  <span
+                    className={`inline-flex items-center rounded-full px-5 py-3 text-sm font-black ${fundingError ? "bg-red-50 text-red-700" : "bg-orange-50 text-orange-800"}`}
+                    title={fundingError || "Treasury is securing escrow on-chain."}
+                  >
+                    {fundingError ? "Insufficient balance" : "Treasury securing escrow..."}
                   </span>
                 )}
                 {[PAYMENT_STATES.ESCROW_FUNDED, PAYMENT_STATES.WORK_SUBMITTED].includes(invoiceStatus) && (

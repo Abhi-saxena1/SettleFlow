@@ -1141,6 +1141,65 @@ function applyDodoPaymentStatus(invoice, paymentStatus, data = {}) {
   };
 }
 
+function treasuryFundingErrorMessage(error, amount) {
+  const rawMessage = String(error?.message || error || "Automatic treasury escrow funding failed.");
+  const lowerMessage = rawMessage.toLowerCase();
+  const requiredAmount = Number(amount || 0).toLocaleString();
+
+  if (
+    lowerMessage.includes("treasury wallet needs") ||
+    lowerMessage.includes("insufficient treasury") ||
+    lowerMessage.includes("insufficient funds") ||
+    lowerMessage.includes("attempt to debit") ||
+    lowerMessage.includes("no record of a prior credit")
+  ) {
+    if (lowerMessage.includes("sol")) {
+      return "Insufficient treasury SOL balance. Add devnet SOL to the treasury wallet for transaction fees, then sync the invoice again.";
+    }
+
+    return `Insufficient treasury USDC balance. The treasury wallet needs at least ${requiredAmount} USDC before it can secure this invoice on-chain.`;
+  }
+
+  if (lowerMessage.includes("not confirmed")) {
+    return "Treasury transaction was submitted but not confirmed yet. Refresh in a few seconds to check the latest escrow state.";
+  }
+
+  return rawMessage;
+}
+
+async function markTreasuryFundingFailed(id, error) {
+  const now = new Date().toISOString();
+  const invoices = await readInvoices();
+  const invoice = invoices.find((item) => item.id === id);
+  const message = treasuryFundingErrorMessage(error, invoice?.amount);
+
+  const updated = await updateInvoice(id, (current) => ({
+    ...current,
+    fiat_escrow: {
+      ...(current.fiat_escrow || {}),
+      status: normalizePaymentState(current.fiat_escrow?.status || current.status),
+      fundingError: message,
+      fundingFailedAt: now,
+      updatedAt: now
+    },
+    stablecoin: {
+      ...(current.stablecoin || {}),
+      status: normalizePaymentState(current.stablecoin?.status || current.status),
+      fundingError: message,
+      fundingFailedAt: now
+    },
+    seller_payout: {
+      ...(current.seller_payout || {}),
+      provider: "anchor_usdc",
+      status: normalizePaymentState(current.seller_payout?.status || current.status),
+      note: message,
+      updatedAt: now
+    }
+  }));
+
+  return { invoice: updated, message };
+}
+
 async function fundTreasuryEscrowForInvoice(id, { userId = null, source = "automatic" } = {}) {
   if (!id) throw new ApiError("invoice id is required", 400);
 
@@ -1169,24 +1228,40 @@ async function fundTreasuryEscrowForInvoice(id, { userId = null, source = "autom
   new PublicKey(sellerWallet);
 
   const now = new Date().toISOString();
-  await updateInvoice(id, (current) => transitionInvoiceStatus(current, PAYMENT_STATES.TREASURY_FUNDING_PENDING, {
-    treasury_funding_started_at: current.treasury_funding_started_at || now,
-    fiat_escrow: {
-      ...(current.fiat_escrow || {}),
-      status: PAYMENT_STATES.TREASURY_FUNDING_PENDING,
-      note: source === "automatic" ? "Automatic treasury funding started after Dodo webhook." : "Treasury funding retry started.",
-      updatedAt: now
-    },
-    seller_payout: {
-      ...(current.seller_payout || {}),
-      provider: "anchor_usdc",
-      status: PAYMENT_STATES.TREASURY_FUNDING_PENDING,
-      note: "Treasury is locking USDC into the Anchor escrow vault.",
-      updatedAt: now
-    }
-  }));
+  let funding;
 
-  const funding = await initializeAndFundAnchorEscrow({ invoiceId: invoice.id, sellerWallet, amount: invoice.amount });
+  try {
+    await updateInvoice(id, (current) => transitionInvoiceStatus(current, PAYMENT_STATES.TREASURY_FUNDING_PENDING, {
+      treasury_funding_started_at: current.treasury_funding_started_at || now,
+      fiat_escrow: {
+        ...(current.fiat_escrow || {}),
+        status: PAYMENT_STATES.TREASURY_FUNDING_PENDING,
+        note: source === "automatic" ? "Automatic treasury funding started after Dodo webhook." : "Treasury funding retry started.",
+        fundingError: null,
+        updatedAt: now
+      },
+      stablecoin: {
+        ...(current.stablecoin || {}),
+        status: PAYMENT_STATES.TREASURY_FUNDING_PENDING,
+        fundingError: null,
+        updatedAt: now
+      },
+      seller_payout: {
+        ...(current.seller_payout || {}),
+        provider: "anchor_usdc",
+        status: PAYMENT_STATES.TREASURY_FUNDING_PENDING,
+        note: "Treasury is locking USDC into the Anchor escrow vault.",
+        updatedAt: now
+      }
+    }));
+
+    funding = await initializeAndFundAnchorEscrow({ invoiceId: invoice.id, sellerWallet, amount: invoice.amount });
+  } catch (error) {
+    const failure = await markTreasuryFundingFailed(id, error);
+    await recordInvoiceEvent(failure.invoice, "treasury_funding_failed", failure.message).catch((eventError) => console.warn("Treasury funding failure event skipped:", eventError.message));
+    throw new ApiError(failure.message, error.status || 400);
+  }
+
   const updated = await updateInvoice(id, (current) => transitionInvoiceStatus(current, PAYMENT_STATES.ESCROW_FUNDED, {
     funded_at: current.funded_at || now,
     escrow_funded_at: current.escrow_funded_at || now,
@@ -1195,6 +1270,7 @@ async function fundTreasuryEscrowForInvoice(id, { userId = null, source = "autom
       status: PAYMENT_STATES.ESCROW_FUNDED,
       treasuryTx: funding.signature,
       treasuryExplorerUrl: funding.explorerUrl,
+      fundingError: null,
       fundedAt: now,
       updatedAt: now
     },
@@ -1207,6 +1283,7 @@ async function fundTreasuryEscrowForInvoice(id, { userId = null, source = "autom
       vaultTokenAccount: funding.vaultTokenAccount,
       sourceTokenAccount: funding.treasuryTokenAccount,
       sellerWallet,
+      fundingError: null,
       mode: "anchor_pda_vault"
     },
     seller_payout: {
@@ -1476,13 +1553,17 @@ async function initializeAndFundAnchorEscrow({ invoiceId, sellerWallet, amount }
   const lamports = await connection.getBalance(accounts.treasury.publicKey);
 
   if (lamports < 5000) {
-    throw new ApiError(`Treasury wallet needs devnet SOL for Anchor escrow fees: ${accounts.treasury.publicKey.toBase58()}`, 400);
+    throw new ApiError(`Insufficient treasury SOL balance. Add devnet SOL for Anchor escrow fees: ${accounts.treasury.publicKey.toBase58()}`, 402);
   }
 
   const amountBaseUnits = Math.round(Number(amount) * 10 ** accounts.config.decimals);
   const treasuryBalance = await connection.getTokenAccountBalance(accounts.treasuryTokenAccount).catch(() => null);
-  if (!treasuryBalance || Number(treasuryBalance.value.uiAmountString || 0) < Number(amount)) {
-    throw new ApiError(`Treasury wallet needs ${amount} USDC before it can fund the escrow vault.`, 400);
+  const availableBalance = Number(treasuryBalance?.value?.uiAmountString || treasuryBalance?.value?.uiAmount || 0);
+  if (!treasuryBalance || availableBalance + Number.EPSILON < Number(amount)) {
+    throw new ApiError(
+      `Insufficient treasury USDC balance. Available ${availableBalance.toLocaleString()} USDC, required ${Number(amount || 0).toLocaleString()} USDC.`,
+      402
+    );
   }
 
   const transaction = new Transaction();
@@ -2073,12 +2154,19 @@ export async function handleSettleFlowApi(request, segments = []) {
     const updated = await updateInvoice(id, (current) => applyDodoPaymentStatus(current, paymentStatus, session));
     if ([PAYMENT_STATES.FIAT_PAID, PAYMENT_STATES.TREASURY_FUNDING_PENDING].includes(normalizePaymentState(updated.status))) {
       await recordInvoiceEvent(updated, "fiat_paid", `Dodo fiat payment collected for ${Number(updated.amount || 0).toLocaleString()} ${updated.currency || "USDC"}.`).catch((error) => console.warn("Fiat payment event skipped:", error.message));
+      let fundingError = null;
       const funded = await fundTreasuryEscrowForInvoice(id, { userId: user.id, source: "automatic" }).catch(async (error) => {
+        fundingError = error;
         await recordInvoiceEvent(updated, "treasury_funding_failed", error.message || "Automatic treasury escrow funding failed.").catch((eventError) => console.warn("Treasury funding failure event skipped:", eventError.message));
         return null;
       });
       if (funded) {
         return { invoice: funded, session };
+      }
+      if (fundingError) {
+        const latestInvoices = await readInvoices();
+        const latest = getOwnedInvoice(latestInvoices, id, user.id) || updated;
+        return { invoice: withPaymentPlan(latest), session };
       }
     }
     return { invoice: withPaymentPlan(updated), session };

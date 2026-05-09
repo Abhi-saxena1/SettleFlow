@@ -81,6 +81,7 @@ function InvoiceActions({
 }) {
   const actionBusy = busyId === invoice.id;
   const status = normalizePaymentState(invoice.status);
+  const fundingError = invoice.fiat_escrow?.fundingError || invoice.stablecoin?.fundingError;
 
   if (status === PAYMENT_STATES.WITHDRAWN) {
     return (
@@ -101,8 +102,11 @@ function InvoiceActions({
   if (status === PAYMENT_STATES.FIAT_PAID || status === PAYMENT_STATES.TREASURY_FUNDING_PENDING) {
     return (
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex h-10 items-center rounded-full bg-orange-50 px-4 text-xs font-black text-orange-800">
-          Securing escrow...
+        <span
+          className={`inline-flex min-h-10 items-center rounded-full px-4 py-2 text-xs font-black ${fundingError ? "bg-red-50 text-red-700" : "bg-orange-50 text-orange-800"}`}
+          title={fundingError || "Treasury is securing escrow on-chain."}
+        >
+          {fundingError ? "Insufficient balance" : "Securing escrow..."}
         </span>
         <button onClick={() => onSyncPayment(invoice.id)} className="button-secondary px-3 py-2" disabled={actionBusy}>
           {actionBusy ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}

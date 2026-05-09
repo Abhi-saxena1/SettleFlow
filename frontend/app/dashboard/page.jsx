@@ -177,6 +177,7 @@ export default function DashboardPage() {
           return next;
         });
         const paymentStatus = String(updated.payment?.status || "").toLowerCase();
+        const fundingError = updated.fiat_escrow?.fundingError || updated.stablecoin?.fundingError;
 
         if ([
           PAYMENT_STATES.ESCROW_FUNDED,
@@ -184,6 +185,10 @@ export default function DashboardPage() {
           PAYMENT_STATES.RELEASED,
           PAYMENT_STATES.WITHDRAWN
         ].includes(normalizePaymentState(updated.status))) {
+          return updated;
+        }
+
+        if (fundingError) {
           return updated;
         }
 
@@ -280,9 +285,14 @@ export default function DashboardPage() {
 
         const refreshed = await refreshInvoicesAfterPayment();
         const refreshedInvoice = refreshed.find((invoice) => invoice.id === invoiceId) || updated;
+        const fundingError = refreshedInvoice.fiat_escrow?.fundingError || refreshedInvoice.stablecoin?.fundingError;
 
         if (!cancelled) {
-          setNotice(`${refreshedInvoice.id} Dodo payment synced: ${refreshedInvoice.payment?.status || refreshedInvoice.status}.`);
+          if (fundingError) {
+            setError(fundingError);
+          } else {
+            setNotice(`${refreshedInvoice.id} Dodo payment synced: ${refreshedInvoice.payment?.status || refreshedInvoice.status}.`);
+          }
         }
 
         window.history.replaceState({}, "", window.location.pathname + window.location.hash);
