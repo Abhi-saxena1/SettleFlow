@@ -51,28 +51,28 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
   }
 
   return (
-    <form id="create" onSubmit={submitInvoice} className="rounded-xl border border-black/10 bg-white p-6 shadow-md">
-      <div className="mb-5">
+    <form id="create" onSubmit={submitInvoice} className="self-start rounded-xl border border-black/10 bg-white p-5 shadow-md">
+      <div className="mb-4">
         <p className="section-kicker">Create</p>
         <h2 className="mt-2 text-2xl font-black text-ink">New invoice</h2>
       </div>
-      <div className="grid gap-4">
+      <div className="grid gap-3">
         <label className="grid gap-2 text-sm font-bold text-black/55">
           Invoice title
           <input
             required
             value={form.title}
             onChange={(event) => updateField("title", event.target.value)}
-            className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
+            className="rounded-xl border border-black/10 px-4 py-2.5 text-base font-semibold text-ink outline-none focus:border-leaf"
           />
         </label>
         <label className="grid gap-2 text-sm font-bold text-black/55">
           Description
           <textarea
-            rows={3}
+            rows={2}
             value={form.description}
             onChange={(event) => updateField("description", event.target.value)}
-            className="resize-none rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
+            className="resize-none rounded-xl border border-black/10 px-4 py-2.5 text-base font-semibold text-ink outline-none focus:border-leaf"
           />
         </label>
         <label className="grid gap-2 text-sm font-bold text-black/55">
@@ -83,7 +83,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             type="number"
             value={form.amount}
             onChange={(event) => updateField("amount", event.target.value)}
-            className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
+            className="rounded-xl border border-black/10 px-4 py-2.5 text-base font-semibold text-ink outline-none focus:border-leaf"
           />
         </label>
         <label className="grid gap-2 text-sm font-bold text-black/55">
@@ -92,7 +92,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             required
             value={form.buyer}
             onChange={(event) => updateField("buyer", event.target.value)}
-            className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
+            className="rounded-xl border border-black/10 px-4 py-2.5 text-base font-semibold text-ink outline-none focus:border-leaf"
           />
         </label>
         <label className="grid gap-2 text-sm font-bold text-black/55">
@@ -101,7 +101,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             required
             value={form.seller}
             onChange={(event) => updateField("seller", event.target.value)}
-            className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
+            className="rounded-xl border border-black/10 px-4 py-2.5 text-base font-semibold text-ink outline-none focus:border-leaf"
           />
         </label>
         <label className="grid gap-2 text-sm font-bold text-black/55">
@@ -110,16 +110,16 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             required={requiresSellerWallet}
             value={form.seller_wallet}
             onChange={(event) => updateField("seller_wallet", event.target.value)}
-            className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
+            className="rounded-xl border border-black/10 px-4 py-2.5 text-base font-semibold text-ink outline-none focus:border-leaf"
             placeholder="Seller Solana wallet for Anchor escrow withdrawal"
           />
         </label>
-        <div className="inline-flex items-center gap-2 rounded-xl bg-mint px-4 py-3 text-sm font-black text-ink">
+        <div className="inline-flex items-center gap-2 rounded-xl bg-mint px-4 py-2.5 text-sm font-black text-ink">
           <CreditCard size={16} />
           Dodo checkout to Anchor escrow
         </div>
       </div>
-      <button className="button-primary mt-6 w-full gap-2" disabled={loading}>
+      <button className="button-primary mt-5 w-full gap-2 py-2.5" disabled={loading}>
         {loading ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
         Create with AI score
       </button>

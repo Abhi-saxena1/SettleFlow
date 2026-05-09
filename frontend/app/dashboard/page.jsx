@@ -511,7 +511,7 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <div className="grid min-w-0 gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+        <div className="grid min-w-0 items-start gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
           <InvoiceForm
             disabled={!isAuthenticated}
             onLoginRequired={promptLogin}
