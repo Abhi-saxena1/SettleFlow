@@ -203,11 +203,11 @@ export default function WalletConnectButton() {
     return (
       <button
         onClick={disconnectWallet}
-        className="inline-flex items-center gap-2 rounded-full border border-leaf/25 bg-mint px-4 py-2 text-sm font-semibold text-ink shadow-sm hover:-translate-y-0.5 hover:shadow-md"
+        className="inline-flex max-w-[12rem] items-center gap-2 truncate rounded-full border border-leaf/25 bg-mint px-3 py-2 text-sm font-semibold text-ink shadow-sm hover:-translate-y-0.5 hover:shadow-md sm:max-w-none sm:px-4"
         title={`Connected to ${walletName}: ${walletAddress}`}
       >
         <CheckCircle2 size={17} className="text-leaf" />
-        {walletName} {shortenAddress(walletAddress)}
+        <span className="truncate">{walletName} {shortenAddress(walletAddress)}</span>
       </button>
     );
   }
@@ -216,17 +216,17 @@ export default function WalletConnectButton() {
     <div className="relative">
       <button
         onClick={() => setMenuOpen((current) => !current)}
-        className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold shadow-sm hover:-translate-y-0.5 hover:shadow-md"
+        className="inline-flex max-w-[12rem] items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2 text-sm font-semibold shadow-sm hover:-translate-y-0.5 hover:shadow-md sm:max-w-none sm:px-4"
         disabled={connecting}
         title={error || "Choose a wallet"}
       >
         {connecting ? <Loader2 size={17} className="animate-spin" /> : <Wallet size={17} />}
-        {connecting ? "Connecting" : "Connect Wallet"}
+        <span className="truncate">{connecting ? "Connecting" : "Connect Wallet"}</span>
         <ChevronDown size={15} />
       </button>
 
       {menuOpen && (
-        <div className="absolute right-0 top-12 z-40 w-64 overflow-hidden rounded-2xl border border-black/10 bg-white p-2 shadow-md">
+        <div className="absolute right-0 top-12 z-40 w-[min(16rem,calc(100vw-2.5rem))] overflow-hidden rounded-2xl border border-black/10 bg-white p-2 shadow-md">
           <button
             onClick={connectMetaMask}
             className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-sage"

@@ -50,26 +50,26 @@ export default function AiRiskCard() {
   }
 
   return (
-    <section id="risk" className="container-shell py-20">
-      <div className="animate-reveal grid overflow-hidden rounded-[1.8rem] bg-[#c8dc94] p-4 shadow-glow lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="paper-grid relative rounded-[1.25rem] p-8 text-ink sm:p-10 lg:p-12">
-          <div className="pointer-events-none absolute inset-x-8 bottom-8 h-px bg-gradient-to-r from-leaf/40 via-white/10 to-transparent" />
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold shadow-sm">
+    <section id="risk" className="container-shell overflow-hidden py-14 sm:py-20">
+      <div className="animate-reveal grid w-full max-w-full overflow-hidden rounded-[1.8rem] bg-[#c8dc94] p-3 shadow-glow sm:p-4 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="paper-grid relative min-w-0 rounded-[1.25rem] p-6 text-ink sm:p-10 lg:p-12">
+          <div className="pointer-events-none absolute inset-x-6 bottom-6 h-px bg-gradient-to-r from-leaf/40 via-white/10 to-transparent sm:inset-x-8 sm:bottom-8" />
+          <div className="mb-6 inline-flex max-w-full items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold shadow-sm">
             <Brain size={17} className="text-leaf" />
             AI Risk Analysis
           </div>
-          <h2 className="text-4xl font-black tracking-tight sm:text-5xl">Approve the right payments faster.</h2>
-          <p className="mt-5 leading-8 text-white/65">
+          <h2 className="text-3xl font-black tracking-tight sm:text-5xl">Approve the right payments faster.</h2>
+          <p className="mt-5 max-w-prose leading-7 text-black/60 sm:leading-8">
             SettleFlow evaluates invoice amount and mock buyer history, then returns a structured risk score, level, and recommendation.
           </p>
         </div>
-        <div className="p-4 sm:p-8 lg:p-10">
-          <div className="rounded-[1.25rem] border border-black/10 bg-white p-6 shadow-md hover:-translate-y-1 hover:shadow-glow">
+        <div className="min-w-0 p-3 sm:p-8 lg:p-10">
+          <div className="w-full min-w-0 rounded-[1.25rem] border border-black/10 bg-white p-4 shadow-md hover:-translate-y-1 hover:shadow-glow sm:p-6">
             <label className="text-sm font-bold text-black/55" htmlFor="risk-amount">Invoice amount</label>
-            <div className="mt-2 flex gap-3">
+            <div className="mt-2 grid gap-3 sm:flex">
               <input
                 id="risk-amount"
-                className="min-w-0 flex-1 rounded-xl border border-black/10 px-4 py-3 text-lg font-bold outline-none focus:border-leaf"
+                className="w-full min-w-0 rounded-xl border border-black/10 px-4 py-3 text-lg font-bold outline-none focus:border-leaf sm:flex-1"
                 type="number"
                 value={amount}
                 onChange={(event) => {
@@ -78,7 +78,7 @@ export default function AiRiskCard() {
                   setError("");
                 }}
               />
-              <button onClick={runRiskAnalysis} className="button-primary min-w-28" disabled={loading}>
+              <button onClick={runRiskAnalysis} className="button-primary w-full sm:min-w-28 sm:w-auto" disabled={loading}>
                 {loading ? <Loader2 className="animate-spin" size={18} /> : "Analyze"}
               </button>
             </div>
@@ -87,19 +87,19 @@ export default function AiRiskCard() {
                 {error}
               </div>
             )}
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <div className="mt-6 grid min-w-0 gap-4 sm:grid-cols-2">
               <div className="shimmer-surface rounded-xl bg-sage p-5">
                 <p className="text-sm font-bold text-black/50">Risk Score</p>
                 <p className="mt-2 text-5xl font-black text-ink">{loading || !risk ? "--" : risk.risk_score}</p>
               </div>
-              <div className="shimmer-surface rounded-xl bg-mint p-5">
+              <div className="shimmer-surface min-w-0 rounded-xl bg-mint p-5">
                 <p className="text-sm font-bold text-black/50">Risk Level</p>
-                <p className="mt-2 text-3xl font-black text-ink">{loading || !risk ? "Analyzing" : risk.risk_level}</p>
+                <p className="mt-2 break-words text-3xl font-black text-ink">{loading || !risk ? "Analyzing" : risk.risk_level}</p>
               </div>
             </div>
-            <div className="mt-4 flex gap-3 rounded-xl border border-black/10 p-4">
+            <div className="mt-4 flex min-w-0 gap-3 rounded-xl border border-black/10 p-4">
               <ShieldAlert className="mt-1 shrink-0 text-leaf" size={22} />
-              <div>
+              <div className="min-w-0">
                 <p className="font-black text-ink">Recommendation</p>
                 <p className="mt-1 leading-7 text-black/60">
                   {loading || !risk ? "Running fresh analysis for this invoice amount..." : risk.recommendation}
