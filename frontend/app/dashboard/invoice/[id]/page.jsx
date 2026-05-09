@@ -119,13 +119,17 @@ function buildTimeline(invoice) {
     },
     {
       label: "Work Submitted",
-      detail: state === PAYMENT_STATES.WORK_SUBMITTED ? "Seller marked work submitted." : "Seller work submission pending.",
+      detail: [PAYMENT_STATES.RELEASED, PAYMENT_STATES.WITHDRAWN].includes(state)
+        ? "Work accepted before buyer release."
+        : state === PAYMENT_STATES.WORK_SUBMITTED
+          ? "Seller marked work submitted."
+          : "Seller work submission pending.",
       done: [
         PAYMENT_STATES.WORK_SUBMITTED,
         PAYMENT_STATES.RELEASED,
         PAYMENT_STATES.WITHDRAWN
       ].includes(state),
-      date: invoice.work_submitted_at
+      date: invoice.work_submitted_at || ([PAYMENT_STATES.RELEASED, PAYMENT_STATES.WITHDRAWN].includes(state) ? invoice.released_at : null)
     },
     {
       label: "Buyer Released Funds",
