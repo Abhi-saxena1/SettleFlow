@@ -1,7 +1,96 @@
 <<<<<<< HEAD
 # SettleFlow
 
-SettleFlow is a hackathon-friendly MVP for programmable B2B payments. It lets SMEs create invoices, simulate escrow funding and payment release, and run AI-assisted transaction risk scoring.
+Programmable escrow infrastructure for SMEs powered by Solana + Stablecoins.
+
+SettleFlow is a hybrid fintech + Web3 payment infrastructure platform designed to reduce payment delays between buyers and suppliers using escrow-protected settlements, stablecoins, and Solana smart contracts.
+
+The platform combines traditional card payments with on-chain settlement infrastructure to create transparent, programmable, and milestone-based business payments.
+
+Overview
+
+Small and medium businesses frequently face:
+
+1.delayed invoice settlements
+2.payment disputes
+3.lack of transparency
+4.expensive cross-border transfers
+5.trust issues between buyers and suppliers
+
+SettleFlow introduces programmable escrow infrastructure where funds can be securely locked, tracked, and released through smart contract logic.
+
+Core Features
+-Escrow-protected settlements
+-Stablecoin-based payment rails
+-Milestone-based payouts
+-Solana Anchor smart contracts
+-Transparent on-chain tracking
+-Treasury funding system
+-Seller withdrawal flow
+-Devnet testing support
+-Card payment integration
+-AI-assisted transaction risk scoring
+
+
+Payment Architecture
+Buyer Card Payment
+        ↓
+Dodo Payments
+        ↓
+Treasury Wallet
+        ↓
+Anchor Escrow Program
+        ↓
+Seller Withdrawal
+
+Card payments are processed through Dodo Payments and converted into on-chain USDC settlements on Solana.
+
+Funds are routed through a treasury layer before interacting with the escrow smart contract.
+
+
+
+Product Workflow
+1. Invoice Creation
+
+Businesses create invoices and define payment milestones.
+
+2. Buyer Funding
+
+The buyer funds the invoice using card payments.
+
+3. Treasury Settlement
+
+Funds are converted into on-chain USDC and routed to the treasury layer.
+
+4. Escrow Locking
+
+Funds are locked inside the Solana Anchor escrow program.
+
+5. Milestone Release
+
+Payments are released based on milestone completion.
+
+6. Seller Withdrawal
+
+The seller withdraws settled funds securely.
+
+Tech Stack
+-Frontend
+-Next.js
+-TypeScript
+-TailwindCSS
+-Backend
+-Node.js
+-Supabase
+-PostgreSQL
+-Blockchain
+-Solana
+-Anchor Framework
+-SPL Tokens
+-Phantom Wallet
+-Payments
+-Dodo Payments
+-USDC Stablecoin
 
 ## Folder Structure
 
@@ -47,6 +136,31 @@ settleflow-mvp/
         src/
           lib.rs
 ```
+
+Dodo Payments Integration
+
+SettleFlow uses Dodo Payments Checkout Sessions for invoice payment collection.
+
+Required Setup
+-Create a one-time product in the Dodo dashboard
+-Copy the product ID into your environment variables
+-Keep the environment in test_mode while testing
+-Configure the webhook endpoint:
+-POST /dodo/webhook
+
+
+Smart Contract
+
+The escrow infrastructure is powered by Solana Anchor programs.
+
+The contract handles:
+
+-escrow creation
+-fund locking
+-milestone release
+-withdrawal validation
+-settlement tracking
+
 
 ## Run Locally
 
@@ -119,17 +233,33 @@ STABLECOIN_CHAIN=solana-devnet
 STABLECOIN_SYMBOL=USDC
 STABLECOIN_MINT_ADDRESS=your-devnet-usdc-mint
 STABLECOIN_ESCROW_WALLET=escrow-wallet-public-key
-STABLECOIN_ESCROW_SECRET_KEY=[1,2,3,...]
+STABLECOIN_ESCROW_SECRET_KEY=
 STABLECOIN_DECIMALS=6
 SOLANA_RPC_URL=https://api.devnet.solana.com
+
+
 ```
+Required private environment variables:
 
-Dashboard invoices support:
+- Treasury wallet signer
+- Supabase service role key
+- Dodo API credentials
+- Webhook signing secret
 
-- `Fund USDC escrow`: creates a Phantom/Solana wallet-signed SPL transfer to the escrow token account, verifies the confirmed transaction, and moves the invoice to `Funded`.
-- `Release USDC`: signs a backend SPL transfer from the escrow wallet to the seller wallet and moves the invoice to `Completed`.
 
-For production, replace the backend escrow signer with the Anchor PDA vault flow so release rules are enforced fully on-chain.
-=======
+Vision
+SettleFlow is building programmable payment infrastructure for global SMEs using stablecoins and smart contract escrow.
+
+The goal is to make business settlements:
+
+1.instant
+2.transparent
+3.programmable
+4.globally accessible
+
+License
+
+MIT License
+
 # SettleFlow
 >>>>>>> c5504ef4ddc7938d791dbbf69832432d84f273f3
