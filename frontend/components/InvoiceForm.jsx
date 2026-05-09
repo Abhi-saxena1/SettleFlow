@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CreditCard, Loader2, Plus } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { createInvoice } from "../lib/api";
 
 export default function InvoiceForm({ disabled = false, onCreated, onError, onLoginRequired }) {
@@ -114,14 +114,10 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             placeholder="Seller Solana wallet for Anchor escrow withdrawal"
           />
         </label>
-        <div className="inline-flex items-center gap-2 rounded-xl bg-mint px-4 py-2.5 text-sm font-black text-ink">
-          <CreditCard size={16} />
-          Dodo checkout to Anchor escrow
-        </div>
       </div>
       <button className="button-primary mt-5 w-full gap-2 py-2.5" disabled={loading}>
         {loading ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
-        Create with AI score
+        Create invoice
       </button>
     </form>
   );
