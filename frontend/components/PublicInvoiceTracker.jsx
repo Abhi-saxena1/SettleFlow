@@ -38,6 +38,11 @@ function formatDate(value) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
+function formatTimelineDate(step) {
+  if (step.date) return formatDate(step.date);
+  return step.done ? "Completed" : "Pending";
+}
+
 function formatStatus(value) {
   return paymentStateLabel(value);
 }
@@ -70,6 +75,30 @@ function buildTimeline(invoice) {
   const paymentStatus = String(invoice.payment?.status || "").toLowerCase();
   const dodoPaid = ["succeeded", "payment_succeeded", "paid", "completed", "captured"].includes(paymentStatus);
   const state = normalizePaymentState(invoice.status);
+  const fiatPaidOrAfter = [
+    PAYMENT_STATES.FIAT_PAID,
+    PAYMENT_STATES.TREASURY_FUNDING_PENDING,
+    PAYMENT_STATES.ESCROW_FUNDED,
+    PAYMENT_STATES.WORK_SUBMITTED,
+    PAYMENT_STATES.RELEASED,
+    PAYMENT_STATES.WITHDRAWN
+  ].includes(state);
+  const treasuryStartedOrAfter = [
+    PAYMENT_STATES.TREASURY_FUNDING_PENDING,
+    PAYMENT_STATES.ESCROW_FUNDED,
+    PAYMENT_STATES.WORK_SUBMITTED,
+    PAYMENT_STATES.RELEASED,
+    PAYMENT_STATES.WITHDRAWN
+  ].includes(state);
+  const escrowFundedOrAfter = [
+    PAYMENT_STATES.ESCROW_FUNDED,
+    PAYMENT_STATES.WORK_SUBMITTED,
+    PAYMENT_STATES.RELEASED,
+    PAYMENT_STATES.WITHDRAWN
+  ].includes(state);
+  const releasedOrAfter = [PAYMENT_STATES.RELEASED, PAYMENT_STATES.WITHDRAWN].includes(state);
+  const withdrawn = state === PAYMENT_STATES.WITHDRAWN;
+  const finalLifecycleDate = invoice.withdrawn_at || invoice.seller_payout?.paidAt || invoice.completed_at || invoice.released_at || invoice.escrow_funded_at || invoice.fiat_escrow?.fundedAt || invoice.fiat_paid_at || invoice.payment?.updatedAt || invoice.createdAt;
   const steps = [
     {
       label: "Checkout Created",
@@ -82,40 +111,26 @@ function buildTimeline(invoice) {
     {
       label: "Fiat Payment Confirmed",
       detail: dodoPaid ? `Dodo checkout ${String(invoice.payment?.status).replaceAll("_", " ")}.` : "Waiting for Dodo webhook confirmation.",
-      done: [
-        PAYMENT_STATES.FIAT_PAID,
-        PAYMENT_STATES.TREASURY_FUNDING_PENDING,
-        PAYMENT_STATES.ESCROW_FUNDED,
-        PAYMENT_STATES.WORK_SUBMITTED,
-        PAYMENT_STATES.RELEASED,
-        PAYMENT_STATES.WITHDRAWN
-      ].includes(state),
-      date: invoice.fiat_paid_at || invoice.payment?.updatedAt
+      done: fiatPaidOrAfter,
+      date: invoice.fiat_paid_at || invoice.payment?.updatedAt || (fiatPaidOrAfter ? finalLifecycleDate : null)
     },
     {
       label: "Treasury Funding Started",
-      detail: "Treasury prepares the Anchor initialize and fund escrow instructions.",
-      done: [
-        PAYMENT_STATES.TREASURY_FUNDING_PENDING,
-        PAYMENT_STATES.ESCROW_FUNDED,
-        PAYMENT_STATES.WORK_SUBMITTED,
-        PAYMENT_STATES.RELEASED,
-        PAYMENT_STATES.WITHDRAWN
-      ].includes(state),
-      date: invoice.treasury_funding_started_at
+      detail: treasuryStartedOrAfter
+        ? "Treasury started funding the Anchor escrow vault."
+        : "Treasury prepares the Anchor initialize and fund escrow instructions.",
+      done: treasuryStartedOrAfter,
+      date: invoice.treasury_funding_started_at || (treasuryStartedOrAfter ? invoice.escrow_funded_at || invoice.fiat_escrow?.fundedAt || finalLifecycleDate : null)
     },
     {
       label: "Escrow Funded On-chain",
       detail: invoice.stablecoin?.vaultTokenAccount
         ? `USDC locked in Anchor vault ${invoice.stablecoin.vaultTokenAccount.slice(0, 6)}...${invoice.stablecoin.vaultTokenAccount.slice(-4)}.`
-        : "Waiting for Anchor PDA vault funding.",
-      done: [
-        PAYMENT_STATES.ESCROW_FUNDED,
-        PAYMENT_STATES.WORK_SUBMITTED,
-        PAYMENT_STATES.RELEASED,
-        PAYMENT_STATES.WITHDRAWN
-      ].includes(state),
-      date: invoice.escrow_funded_at || invoice.fiat_escrow?.fundedAt
+        : escrowFundedOrAfter
+          ? "USDC secured in the Anchor escrow vault."
+          : "Waiting for Anchor PDA vault funding.",
+      done: escrowFundedOrAfter,
+      date: invoice.escrow_funded_at || invoice.fiat_escrow?.fundedAt || (escrowFundedOrAfter ? invoice.released_at || invoice.withdrawn_at || invoice.completed_at || finalLifecycleDate : null)
     },
     {
       label: "Work Submitted",
@@ -125,18 +140,18 @@ function buildTimeline(invoice) {
           ? "Seller marked work submitted."
           : "Seller work submission pending.",
       done: [PAYMENT_STATES.WORK_SUBMITTED, PAYMENT_STATES.RELEASED, PAYMENT_STATES.WITHDRAWN].includes(state),
-      date: invoice.work_submitted_at || ([PAYMENT_STATES.RELEASED, PAYMENT_STATES.WITHDRAWN].includes(state) ? invoice.released_at : null)
+      date: invoice.work_submitted_at || (releasedOrAfter ? invoice.released_at || invoice.withdrawn_at || invoice.completed_at || finalLifecycleDate : null)
     },
     {
       label: "Buyer Released Funds",
       detail: "Buyer approved release from the Anchor escrow vault.",
-      done: [PAYMENT_STATES.RELEASED, PAYMENT_STATES.WITHDRAWN].includes(state),
-      date: invoice.released_at
+      done: releasedOrAfter,
+      date: invoice.released_at || (releasedOrAfter ? invoice.withdrawn_at || invoice.completed_at || finalLifecycleDate : null)
     },
     {
       label: "Seller Withdrawn",
       detail: state === PAYMENT_STATES.WITHDRAWN ? "Seller withdrew USDC from the escrow vault." : "Withdrawal becomes available after buyer release.",
-      done: state === PAYMENT_STATES.WITHDRAWN,
+      done: withdrawn,
       date: invoice.withdrawn_at || invoice.completed_at
     }
   ];
@@ -160,7 +175,7 @@ function Timeline({ invoice }) {
             <div>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-black text-ink">{step.label}</h3>
-                <p className="text-xs font-bold text-black/35">{formatDate(step.date)}</p>
+                <p className="text-xs font-bold text-black/35">{formatTimelineDate(step)}</p>
               </div>
               <p className="mt-1 text-sm font-semibold leading-6 text-black/55">{step.detail}</p>
             </div>

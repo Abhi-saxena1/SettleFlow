@@ -338,6 +338,13 @@ function publicInvoice(invoice) {
     remaining_paid: safeInvoice.remaining_paid,
     funded_at: safeInvoice.funded_at,
     completed_at: safeInvoice.completed_at,
+    checkout_created_at: safeInvoice.checkout_created_at || null,
+    fiat_paid_at: safeInvoice.fiat_paid_at || null,
+    treasury_funding_started_at: safeInvoice.treasury_funding_started_at || null,
+    escrow_funded_at: safeInvoice.escrow_funded_at || null,
+    work_submitted_at: safeInvoice.work_submitted_at || null,
+    released_at: safeInvoice.released_at || null,
+    withdrawn_at: safeInvoice.withdrawn_at || null,
     createdAt: safeInvoice.createdAt,
     risk: safeInvoice.risk,
     payment: {
@@ -369,6 +376,7 @@ function publicInvoice(invoice) {
       status: normalizePaymentState(safeInvoice.stablecoin?.status || safeInvoice.status),
       escrowTx: safeInvoice.stablecoin?.escrowTx || null,
       escrowExplorerUrl: safeInvoice.stablecoin?.escrowExplorerUrl || null,
+      vaultTokenAccount: safeInvoice.stablecoin?.vaultTokenAccount || null,
       releaseTx: safeInvoice.stablecoin?.releaseTx || null,
       releaseExplorerUrl: safeInvoice.stablecoin?.releaseExplorerUrl || null
     }
