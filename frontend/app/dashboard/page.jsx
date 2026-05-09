@@ -11,7 +11,6 @@ import Navbar from "../../components/Navbar";
 import {
   createDodoCheckout,
   deleteInvoice,
-  fundDodoEscrowFromTreasury,
   confirmSellerWithdraw,
   getStablecoinConfig,
   importInvoices,
@@ -179,8 +178,17 @@ export default function DashboardPage() {
         });
         const paymentStatus = String(updated.payment?.status || "").toLowerCase();
 
-        if (normalizePaymentState(updated.status) === PAYMENT_STATES.FIAT_PAID || ["succeeded", "paid", "completed", "captured"].includes(paymentStatus)) {
+        if ([
+          PAYMENT_STATES.ESCROW_FUNDED,
+          PAYMENT_STATES.WORK_SUBMITTED,
+          PAYMENT_STATES.RELEASED,
+          PAYMENT_STATES.WITHDRAWN
+        ].includes(normalizePaymentState(updated.status))) {
           return updated;
+        }
+
+        if (["succeeded", "paid", "completed", "captured"].includes(paymentStatus) && normalizePaymentState(updated.status) === PAYMENT_STATES.TREASURY_FUNDING_PENDING) {
+          lastError = new Error("Dodo payment confirmed. Treasury escrow funding is still confirming on Devnet.");
         }
 
         if (attempt === attempts - 1) {
@@ -429,10 +437,6 @@ export default function DashboardPage() {
     await runAction(id, releaseAnchorEscrow);
   }
 
-  async function fundDodoEscrow(id) {
-    await runAction(id, fundDodoEscrowFromTreasury);
-  }
-
   async function withdrawDodoEscrow(id) {
     await runAction(id, async (invoiceId) => {
       const invoice = invoices.find((item) => item.id === invoiceId);
@@ -558,7 +562,6 @@ export default function DashboardPage() {
                 onDodoCheckout={startDodoCheckout}
                 onSyncPayment={(id) => runAction(id, syncDodoPayment)}
                 onReleaseStablecoin={startStablecoinRelease}
-                onFundDodoEscrow={fundDodoEscrow}
                 onWithdrawFreelancer={withdrawDodoEscrow}
                 busyId={busyId}
               />

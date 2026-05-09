@@ -7,7 +7,7 @@ import { ArrowLeft, CheckCircle2, Circle, Copy, ExternalLink, Loader2, Printer, 
 import { Connection, Transaction } from "@solana/web3.js";
 import AuthModal from "../../../../components/AuthModal";
 import Navbar from "../../../../components/Navbar";
-import { confirmSellerWithdraw, createDodoCheckout, createInvoiceShareLink, deleteInvoice, fundDodoEscrowFromTreasury, getInvoice, getStablecoinConfig, prepareSellerWithdraw, releaseAnchorEscrow, syncDodoPayment } from "../../../../lib/api";
+import { confirmSellerWithdraw, createDodoCheckout, createInvoiceShareLink, deleteInvoice, getInvoice, getStablecoinConfig, prepareSellerWithdraw, releaseAnchorEscrow, syncDodoPayment } from "../../../../lib/api";
 import { AUTH_CHANGED_EVENT, getStoredSession, saveSession } from "../../../../lib/authSession";
 import { PAYMENT_STATES, normalizePaymentState, paymentStateLabel } from "../../../../lib/paymentStates";
 
@@ -280,13 +280,6 @@ export default function InvoiceDetailPage() {
     );
   }
 
-  async function fundEscrowFromTreasury() {
-    await runInvoiceAction(
-      () => fundDodoEscrowFromTreasury(invoice.id),
-      () => "Treasury funded USDC escrow."
-    );
-  }
-
   async function withdrawFreelancerFunds() {
     await runInvoiceAction(
       async () => {
@@ -483,10 +476,9 @@ export default function InvoiceDetailPage() {
                   Sync Dodo
                 </button>
                 {[PAYMENT_STATES.FIAT_PAID, PAYMENT_STATES.TREASURY_FUNDING_PENDING].includes(invoiceStatus) && (
-                  <button onClick={fundEscrowFromTreasury} disabled={busy || !invoice.seller_wallet} className="button-primary gap-2 disabled:cursor-not-allowed disabled:opacity-50">
-                    {busy ? <Loader2 className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}
-                    Retry escrow funding
-                  </button>
+                  <span className="inline-flex items-center rounded-full bg-orange-50 px-5 py-3 text-sm font-black text-orange-800">
+                    Treasury securing escrow...
+                  </span>
                 )}
                 {[PAYMENT_STATES.ESCROW_FUNDED, PAYMENT_STATES.WORK_SUBMITTED].includes(invoiceStatus) && (
                   <button onClick={releaseEscrowFunds} disabled={busy || !invoice.seller_wallet} className="button-primary gap-2 disabled:cursor-not-allowed disabled:opacity-50">

@@ -2034,7 +2034,7 @@ export async function handleSettleFlowApi(request, segments = []) {
     const session = await retrieveDodoCheckoutSession(invoice.payment.sessionId);
     const paymentStatus = session.payment_status || session.status || "processing";
     const updated = await updateInvoice(id, (current) => applyDodoPaymentStatus(current, paymentStatus, session));
-    if (normalizePaymentState(updated.status) === PAYMENT_STATES.FIAT_PAID) {
+    if ([PAYMENT_STATES.FIAT_PAID, PAYMENT_STATES.TREASURY_FUNDING_PENDING].includes(normalizePaymentState(updated.status))) {
       await recordInvoiceEvent(updated, "fiat_paid", `Dodo fiat payment collected for ${Number(updated.amount || 0).toLocaleString()} ${updated.currency || "USDC"}.`).catch((error) => console.warn("Fiat payment event skipped:", error.message));
       const funded = await fundTreasuryEscrowForInvoice(id, { userId: user.id, source: "automatic" }).catch(async (error) => {
         await recordInvoiceEvent(updated, "treasury_funding_failed", error.message || "Automatic treasury escrow funding failed.").catch((eventError) => console.warn("Treasury funding failure event skipped:", eventError.message));

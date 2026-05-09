@@ -142,7 +142,6 @@ function InvoiceActions({
   onDelete,
   onDodoCheckout,
   onReleaseStablecoin,
-  onFundDodoEscrow,
   onWithdrawFreelancer,
   onSyncPayment
 }) {
@@ -168,9 +167,9 @@ function InvoiceActions({
   if (status === PAYMENT_STATES.FIAT_PAID || status === PAYMENT_STATES.TREASURY_FUNDING_PENDING) {
     return (
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={() => onFundDodoEscrow(invoice.id)} className="button-primary h-10 gap-2 px-4 py-0 leading-none" disabled={actionBusy || !invoice.seller_wallet}>
-          {actionBusy ? <Loader2 className="animate-spin" size={16} /> : "Retry escrow funding"}
-        </button>
+        <span className="inline-flex h-10 items-center rounded-full bg-orange-50 px-4 text-xs font-black text-orange-800">
+          Securing escrow...
+        </span>
         <button onClick={() => onSyncPayment(invoice.id)} className="button-secondary px-3 py-2" disabled={actionBusy}>
           {actionBusy ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
         </button>
@@ -245,7 +244,6 @@ function InvoiceCard({
   onDelete,
   onDodoCheckout,
   onReleaseStablecoin,
-  onFundDodoEscrow,
   onWithdrawFreelancer,
   onSyncPayment
 }) {
@@ -318,7 +316,6 @@ function InvoiceCard({
           onDelete={onDelete}
           onDodoCheckout={onDodoCheckout}
           onReleaseStablecoin={onReleaseStablecoin}
-          onFundDodoEscrow={onFundDodoEscrow}
           onWithdrawFreelancer={onWithdrawFreelancer}
           onSyncPayment={onSyncPayment}
         />
@@ -332,7 +329,6 @@ export default function InvoiceTable({
   onDodoCheckout,
   onDelete,
   onReleaseStablecoin,
-  onFundDodoEscrow,
   onWithdrawFreelancer,
   onSyncPayment,
   busyId
@@ -348,7 +344,6 @@ export default function InvoiceTable({
             onDelete={onDelete}
             onDodoCheckout={onDodoCheckout}
             onReleaseStablecoin={onReleaseStablecoin}
-            onFundDodoEscrow={onFundDodoEscrow}
             onWithdrawFreelancer={onWithdrawFreelancer}
             onSyncPayment={onSyncPayment}
           />
