@@ -111,6 +111,15 @@ function InvoiceActions({
         <button onClick={() => onSyncPayment(invoice.id)} className="button-secondary px-3 py-2" disabled={actionBusy}>
           {actionBusy ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
         </button>
+        <button
+          onClick={() => onDelete(invoice.id)}
+          className="inline-flex h-10 items-center gap-1 rounded-full px-2 text-xs font-bold text-red-600 underline"
+          disabled={actionBusy}
+          title="Delete stuck invoice"
+        >
+          <Trash2 size={13} />
+          Delete
+        </button>
       </div>
     );
   }
