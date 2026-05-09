@@ -936,6 +936,61 @@ function stablecoinConfig() {
   };
 }
 
+async function getTreasuryLiquidity() {
+  const config = stablecoinConfig();
+  const treasury = treasuryKeypair();
+
+  if (!treasury || !config.mint) {
+    return {
+      configured: false,
+      treasuryWallet: config.treasuryWallet || "",
+      mint: config.mint || "",
+      tokenAccount: "",
+      sol: 0,
+      usdc: 0
+    };
+  }
+
+  const connection = new Connection(config.rpcUrl, "confirmed");
+  const mint = new PublicKey(config.mint);
+  const tokenAccount = await getAssociatedTokenAddress(mint, treasury.publicKey);
+  const [lamports, tokenBalance] = await Promise.all([
+    connection.getBalance(treasury.publicKey).catch(() => 0),
+    connection.getTokenAccountBalance(tokenAccount).catch(() => null)
+  ]);
+
+  return {
+    configured: true,
+    treasuryWallet: treasury.publicKey.toBase58(),
+    mint: mint.toBase58(),
+    tokenAccount: tokenAccount.toBase58(),
+    sol: lamports / 1e9,
+    usdc: Number(tokenBalance?.value?.uiAmountString || tokenBalance?.value?.uiAmount || 0)
+  };
+}
+
+async function assertTreasuryLiquidityForCheckout(amount) {
+  const liquidity = await getTreasuryLiquidity();
+  const requiredAmount = Number(amount || 0);
+
+  if (!liquidity.configured) {
+    throw new ApiError("Treasury wallet is not configured. Add STABLECOIN_TREASURY_SECRET_KEY and USDC_MINT before taking Dodo payments.", 503);
+  }
+
+  if (liquidity.sol <= 0.000005) {
+    throw new ApiError(`Treasury wallet needs devnet SOL for escrow fees. Wallet: ${liquidity.treasuryWallet}`, 402);
+  }
+
+  if (liquidity.usdc + Number.EPSILON < requiredAmount) {
+    throw new ApiError(
+      `Insufficient treasury USDC balance. Available ${liquidity.usdc.toLocaleString()} USDC, required ${requiredAmount.toLocaleString()} USDC. Treasury wallet: ${liquidity.treasuryWallet}. Mint: ${liquidity.mint}.`,
+      402
+    );
+  }
+
+  return liquidity;
+}
+
 function withPaymentPlan(invoice) {
   const amount = Number(invoice.amount || 0);
   const config = stablecoinConfig();
@@ -1153,6 +1208,10 @@ function treasuryFundingErrorMessage(error, amount) {
     lowerMessage.includes("attempt to debit") ||
     lowerMessage.includes("no record of a prior credit")
   ) {
+    if (lowerMessage.includes("available") && lowerMessage.includes("required")) {
+      return rawMessage;
+    }
+
     if (lowerMessage.includes("sol")) {
       return "Insufficient treasury SOL balance. Add devnet SOL to the treasury wallet for transaction fees, then sync the invoice again.";
     }
@@ -1764,9 +1823,19 @@ export async function handleSettleFlowApi(request, segments = []) {
 
   if (method === "GET" && route === "/stablecoin/config") {
     const config = stablecoinConfig();
+    const treasury = await getTreasuryLiquidity().catch(() => null);
     return {
       configured: Boolean(config.mint && config.treasuryWallet && (process.env.ANCHOR_ESCROW_PROGRAM_ID || process.env.SETTLEFLOW_ESCROW_PROGRAM_ID)),
       anchorProgramId: process.env.ANCHOR_ESCROW_PROGRAM_ID || process.env.SETTLEFLOW_ESCROW_PROGRAM_ID || "",
+      treasury: treasury
+        ? {
+            wallet: treasury.treasuryWallet,
+            tokenAccount: treasury.tokenAccount,
+            mint: treasury.mint,
+            sol: treasury.sol,
+            usdc: treasury.usdc
+          }
+        : null,
       ...config
     };
   }
@@ -2115,6 +2184,7 @@ export async function handleSettleFlowApi(request, segments = []) {
     if (![PAYMENT_STATES.DRAFT, PAYMENT_STATES.CHECKOUT_PENDING].includes(normalizePaymentState(invoice.status))) {
       throw new ApiError(`Checkout cannot be created while invoice is ${normalizePaymentState(invoice.status)}.`, 409);
     }
+    await assertTreasuryLiquidityForCheckout(invoice.amount);
     const checkout = await createDodoCheckoutSession(invoice, request.url);
     const now = new Date().toISOString();
     const updated = await updateInvoice(id, (current) => transitionInvoiceStatus(current, PAYMENT_STATES.CHECKOUT_PENDING, {
