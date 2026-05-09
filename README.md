@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # SettleFlow
 
 Programmable escrow infrastructure for SMEs powered by Solana + Stablecoins.
@@ -262,4 +262,4 @@ License
 MIT License
 
 # SettleFlow
->>>>>>> c5504ef4ddc7938d791dbbf69832432d84f273f3
+
