@@ -11,10 +11,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
     amount: "15000",
     buyer: "Northstar Retail",
     seller: "Atlas Components",
-    buyer_email: "",
-    seller_email: "",
     seller_wallet: "",
-    due_date: "",
     payment_method: "dodo"
   });
   const [loading, setLoading] = useState(false);
@@ -107,28 +104,6 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
           />
         </label>
-        <div className="grid gap-4">
-          <label className="grid gap-2 text-sm font-bold text-black/55">
-            Buyer email
-            <input
-              type="email"
-              value={form.buyer_email}
-              onChange={(event) => updateField("buyer_email", event.target.value)}
-              className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
-              placeholder="buyer@company.com"
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-bold text-black/55">
-            Seller email
-            <input
-              type="email"
-              value={form.seller_email}
-              onChange={(event) => updateField("seller_email", event.target.value)}
-              className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
-              placeholder="seller@company.com"
-            />
-          </label>
-        </div>
         <label className="grid gap-2 text-sm font-bold text-black/55">
           Seller wallet address
           <input
@@ -137,15 +112,6 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             onChange={(event) => updateField("seller_wallet", event.target.value)}
             className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
             placeholder="Seller Solana wallet for Anchor escrow withdrawal"
-          />
-        </label>
-        <label className="grid gap-2 text-sm font-bold text-black/55">
-          Due date
-          <input
-            type="date"
-            value={form.due_date}
-            onChange={(event) => updateField("due_date", event.target.value)}
-            className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
           />
         </label>
         <div className="inline-flex items-center gap-2 rounded-xl bg-mint px-4 py-3 text-sm font-black text-ink">

@@ -517,36 +517,11 @@ export default function InvoiceDetailPage() {
                   </div>
                 </div>
               )}
-              {(
-                <div className="mt-6 rounded-xl border border-orange-100 bg-orange-50 p-5 text-sm font-semibold text-orange-900/75">
-                  <p className="section-kicker text-orange-700">Anchor escrow pipeline</p>
-                  <p className="mt-3">
-                    Dodo confirms fiat first. Then the SettleFlow treasury locks USDC in an Anchor vault, the buyer releases it, and the seller withdraws on-chain.
-                  </p>
-                  <p className="mt-2 font-black text-orange-950">
-                    Escrow status: {formatStatus(invoice.fiat_escrow?.status || PAYMENT_STATES.DRAFT)}
-                  </p>
-                  <p className="mt-1 font-black text-orange-950">
-                    Withdrawal status: {formatStatus(invoice.seller_payout?.status || PAYMENT_STATES.DRAFT)}
-                  </p>
-                  {!invoice.seller_wallet && <p className="mt-2 font-black text-red-700">Missing seller wallet. Create Dodo invoices with a seller Solana wallet for Anchor escrow withdrawal.</p>}
-                  {invoice.fiat_escrow?.treasuryTx && <p className="mt-2">Treasury funding: {invoice.fiat_escrow.treasuryTx}</p>}
-                  {invoice.seller_payout?.reference && <p className="mt-2">Reference: {invoice.seller_payout.reference}</p>}
-                  {invoice.seller_payout?.explorerUrl && <a className="mt-2 inline-flex font-black text-leaf underline" href={invoice.seller_payout.explorerUrl} target="_blank" rel="noreferrer">Withdrawal tx</a>}
-                  {invoice.seller_payout?.paidAt && <p className="mt-2">Paid at: {formatDate(invoice.seller_payout.paidAt)}</p>}
-                </div>
-              )}
             </section>
 
             <aside className="grid content-start gap-6">
               <Timeline invoice={invoice} />
-              <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-5 shadow-md">
-                <p className="text-sm font-black text-yellow-800">Running on Devnet (Test Mode)</p>
-                <p className="mt-2 text-sm font-semibold leading-6 text-yellow-900/70">
-                  Use devnet wallets and test payment methods only. This page is for verifying the settlement flow before production hardening.
-                </p>
-                <p className="sr-only">{timeline.length} timeline steps loaded.</p>
-              </div>
+              <p className="sr-only">{timeline.length} timeline steps loaded.</p>
             </aside>
           </div>
         )}
