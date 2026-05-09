@@ -7,12 +7,7 @@ import { analyzeRisk } from "../lib/api";
 export default function AiRiskCard() {
   const requestIdRef = useRef(0);
   const [amount, setAmount] = useState(28000);
-  const [risk, setRisk] = useState({
-    risk_score: 42,
-    risk_level: "Medium",
-    recommendation: "Fund escrow, but require delivery confirmation and keep release approval manual.",
-    analyzed_amount: 28000
-  });
+  const [risk, setRisk] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -77,7 +72,11 @@ export default function AiRiskCard() {
                 className="min-w-0 flex-1 rounded-xl border border-black/10 px-4 py-3 text-lg font-bold outline-none focus:border-leaf"
                 type="number"
                 value={amount}
-                onChange={(event) => setAmount(event.target.value)}
+                onChange={(event) => {
+                  setAmount(event.target.value);
+                  setRisk(null);
+                  setError("");
+                }}
               />
               <button onClick={runRiskAnalysis} className="button-primary min-w-28" disabled={loading}>
                 {loading ? <Loader2 className="animate-spin" size={18} /> : "Analyze"}

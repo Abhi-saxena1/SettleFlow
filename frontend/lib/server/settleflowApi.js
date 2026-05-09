@@ -1229,6 +1229,37 @@ async function fundTreasuryEscrowForInvoice(id, { userId = null, source = "autom
   return withPaymentPlan(updated);
 }
 
+function riskRecommendation({ amount, history = [], riskLevel }) {
+  const numericAmount = Number(amount || 0);
+  const latePayments = history.filter((item) => item.status === "late").length;
+  const disputedPayments = history.filter((item) => item.status === "disputed").length;
+  const amountLabel = `${numericAmount.toLocaleString()} USDC`;
+  const historySignal = disputedPayments > 0
+    ? `${disputedPayments} disputed buyer payment${disputedPayments === 1 ? "" : "s"}`
+    : latePayments > 0
+      ? `${latePayments} late buyer payment${latePayments === 1 ? "" : "s"}`
+      : "clean buyer history";
+  const amountBand = numericAmount >= 50000
+    ? "very large"
+    : numericAmount >= 25000
+      ? "large"
+      : numericAmount >= 10000
+        ? "mid-market"
+        : numericAmount >= 1000
+          ? "standard"
+          : "small";
+
+  if (riskLevel === "Low") {
+    return `Approve escrow for ${amountLabel}. This is a ${amountBand} invoice with ${historySignal}; keep the normal buyer release step before seller withdrawal.`;
+  }
+
+  if (riskLevel === "Medium") {
+    return `Review escrow for ${amountLabel} before release. This ${amountBand} invoice carries ${historySignal}, so confirm delivery evidence before allowing withdrawal.`;
+  }
+
+  return `Request additional verification before funding or releasing ${amountLabel}. This ${amountBand} invoice plus ${historySignal} should require manual approval and dispute readiness.`;
+}
+
 function fallbackRiskScore(amount, history = []) {
   const numericAmount = Number(amount || 0);
   const latePayments = history.filter((item) => item.status === "late").length;
@@ -1248,10 +1279,11 @@ function fallbackRiskScore(amount, history = []) {
     )
   );
   const riskLevel = score < 35 ? "Low" : score < 70 ? "Medium" : "High";
+
   return {
     risk_score: score,
     risk_level: riskLevel,
-    recommendation: `${riskLevel === "Low" ? "Approve" : riskLevel === "Medium" ? "Review" : "Request verification before"} escrow for ${numericAmount.toLocaleString()} USDC. Score reflects invoice size, buyer history, and settlement risk.`,
+    recommendation: riskRecommendation({ amount: numericAmount, history, riskLevel }),
     analyzed_amount: numericAmount
   };
 }
@@ -1285,10 +1317,15 @@ async function analyzeRisk({ amount, buyerHistory = [] }) {
       temperature: 0.2
     });
     const parsed = JSON.parse(response.choices[0].message.content);
+    const parsedScore = Number(parsed.risk_score);
+    const score = Number.isFinite(parsedScore)
+      ? Math.max(1, Math.min(95, Math.round((parsedScore + deterministicRisk.risk_score * 2) / 3)))
+      : deterministicRisk.risk_score;
+    const riskLevel = score < 35 ? "Low" : score < 70 ? "Medium" : "High";
     return {
-      risk_score: deterministicRisk.risk_score,
-      risk_level: deterministicRisk.risk_level,
-      recommendation: parsed.recommendation || deterministicRisk.recommendation,
+      risk_score: score,
+      risk_level: riskLevel,
+      recommendation: riskRecommendation({ amount, history: buyerHistory, riskLevel }),
       analyzed_amount: Number(amount || 0)
     };
   } catch (error) {
