@@ -15,8 +15,6 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
     seller_email: "",
     seller_wallet: "",
     due_date: "",
-    upfront_percentage: "50",
-    allow_partial_funding: true,
     payment_method: "dodo"
   });
   const [loading, setLoading] = useState(false);
@@ -43,7 +41,8 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
       const invoice = await createInvoice({
         ...form,
         amount: Number(form.amount),
-        upfront_percentage: Number(form.upfront_percentage)
+        upfront_percentage: 100,
+        allow_partial_funding: false
       });
       onCreated(invoice);
       setForm((current) => ({ ...current, amount: "" }));
@@ -146,27 +145,6 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             type="date"
             value={form.due_date}
             onChange={(event) => updateField("due_date", event.target.value)}
-            className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
-          />
-        </label>
-        <label className="flex items-center justify-between gap-4 rounded-xl bg-mint p-4 text-sm font-bold text-black/65">
-          Allow partial funding
-          <input
-            type="checkbox"
-            checked={form.allow_partial_funding}
-            onChange={(event) => updateField("allow_partial_funding", event.target.checked)}
-            className="h-5 w-5 accent-leaf"
-          />
-        </label>
-        <label className="grid gap-2 text-sm font-bold text-black/55">
-          Upfront %
-          <input
-            required
-            min="1"
-            max="99"
-            type="number"
-            value={form.upfront_percentage}
-            onChange={(event) => updateField("upfront_percentage", event.target.value)}
             className="rounded-xl border border-black/10 px-4 py-3 text-base font-semibold text-ink outline-none focus:border-leaf"
           />
         </label>

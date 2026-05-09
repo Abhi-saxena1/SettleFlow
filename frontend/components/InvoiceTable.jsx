@@ -69,8 +69,7 @@ function formatStatusLabel(value) {
   return paymentStateLabel(value);
 }
 
-function PaymentBreakdown({ invoice }) {
-  const currency = invoice.currency || "USDC";
+function FundingProgress({ invoice }) {
   const progress = Number(invoice.payment_progress || 0);
 
   return (
@@ -78,11 +77,7 @@ function PaymentBreakdown({ invoice }) {
       <div className="h-2 overflow-hidden rounded-full bg-black/10">
         <div className="h-full rounded-full bg-leaf transition-all" style={{ width: `${progress}%` }} />
       </div>
-      <div className="grid gap-1">
-        <p>Upfront: {formatAmount(invoice.upfront_amount, currency)} ({invoice.upfront_percentage || 50}%)</p>
-        <p>Remaining: {formatAmount(invoice.remaining_amount, currency)}</p>
-        <p className="font-black text-ink">{progress}% paid</p>
-      </div>
+      <p className="font-black text-ink">{progress}% funded</p>
     </div>
   );
 }
@@ -273,9 +268,9 @@ function InvoiceCard({
           <p className="mt-1 text-sm font-semibold text-black/70">{invoice.seller}</p>
         </div>
         <div>
-          <p className="font-bold text-black/40">Split</p>
+          <p className="font-bold text-black/40">Funding</p>
           <div className="mt-2">
-            <PaymentBreakdown invoice={invoice} />
+            <FundingProgress invoice={invoice} />
           </div>
         </div>
       </div>

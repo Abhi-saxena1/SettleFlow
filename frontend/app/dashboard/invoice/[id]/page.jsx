@@ -445,9 +445,9 @@ export default function InvoiceDetailPage() {
 
               <div className="mt-8 grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-black/10 p-5">
-                  <p className="section-kicker">Split Escrow</p>
-                  <p className="mt-3 font-bold text-black/60">Upfront: {formatAmount(invoice.upfront_amount, invoice.currency)} ({invoice.upfront_percentage || 50}%)</p>
-                  <p className="mt-2 font-bold text-black/60">Remaining: {formatAmount(invoice.remaining_amount, invoice.currency)}</p>
+                  <p className="section-kicker">Escrow Amount</p>
+                  <p className="mt-3 text-2xl font-black text-ink">{formatAmount(invoice.amount, invoice.currency)}</p>
+                  <p className="mt-2 text-sm font-semibold text-black/55">Full invoice amount secured through one escrow vault.</p>
                 </div>
                 <div className="rounded-xl border border-black/10 p-5">
                   <p className="section-kicker">AI Recommendation</p>

@@ -311,9 +311,7 @@ export default function PublicInvoiceTracker({ token }) {
                   <div className="h-full rounded-full bg-leaf transition-all" style={{ width: `${progress}%` }} />
                 </div>
                 <p className="mt-3 text-2xl font-black text-ink">{progress}% funded</p>
-                <p className="mt-2 text-sm font-semibold text-black/55">
-                  Upfront {formatAmount(invoice.upfront_amount, invoice.currency)} / Remaining {formatAmount(invoice.remaining_amount, invoice.currency)}
-                </p>
+                <p className="mt-2 text-sm font-semibold text-black/55">Full invoice escrow amount: {formatAmount(invoice.amount, invoice.currency)}</p>
               </div>
 
               {(escrowUrl || releaseUrl || sellerPayoutUrl) && (
