@@ -2,71 +2,10 @@
 
 import { ExternalLink, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { PAYMENT_STATES, normalizePaymentState, paymentStateLabel } from "../lib/paymentStates";
-
-const statusStyles = {
-  draft: "bg-yellow-100 text-yellow-800",
-  checkout_pending: "bg-purple-100 text-purple-800",
-  fiat_paid: "bg-purple-100 text-purple-800",
-  treasury_funding_pending: "bg-orange-100 text-orange-800",
-  escrow_funded: "bg-blue-100 text-blue-800",
-  work_submitted: "bg-blue-100 text-blue-800",
-  release_pending: "bg-blue-100 text-blue-800",
-  released: "bg-emerald-100 text-emerald-800",
-  withdrawn: "bg-green-100 text-green-800",
-  refunded: "bg-gray-100 text-gray-700",
-  disputed: "bg-red-100 text-red-800"
-};
-
-const riskStyles = {
-  Low: "bg-green-100 text-green-800",
-  Medium: "bg-orange-100 text-orange-800",
-  High: "bg-red-100 text-red-800"
-};
-
-const paymentStyles = {
-  draft: "bg-gray-100 text-gray-700",
-  checkout_created: "bg-purple-100 text-purple-800",
-  processing: "bg-blue-100 text-blue-800",
-  succeeded: "bg-green-100 text-green-800",
-  failed: "bg-red-100 text-red-800",
-  cancelled: "bg-gray-100 text-gray-700"
-};
-
-const stablecoinStyles = {
-  draft: "bg-gray-100 text-gray-700",
-  escrow_funded: "bg-emerald-100 text-emerald-800",
-  released: "bg-green-100 text-green-800",
-  withdrawn: "bg-green-100 text-green-800",
-  disputed: "bg-red-100 text-red-800"
-};
-
-const payoutStyles = {
-  draft: "bg-gray-100 text-gray-700",
-  fiat_paid: "bg-purple-100 text-purple-800",
-  treasury_funding_pending: "bg-orange-100 text-orange-800",
-  escrow_funded: "bg-blue-100 text-blue-800",
-  work_submitted: "bg-blue-100 text-blue-800",
-  release_pending: "bg-blue-100 text-blue-800",
-  released: "bg-emerald-100 text-emerald-800",
-  withdrawn: "bg-green-100 text-green-800",
-  disputed: "bg-red-100 text-red-800"
-};
-
-function StatusPill({ children, className }) {
-  return (
-    <span className={`inline-flex min-h-8 items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-black leading-none ${className}`}>
-      {children}
-    </span>
-  );
-}
+import { PAYMENT_STATES, normalizePaymentState } from "../lib/paymentStates";
 
 function formatAmount(value, currency = "USDC") {
   return `${Number(value || 0).toLocaleString()} ${currency}`;
-}
-
-function formatStatusLabel(value) {
-  return paymentStateLabel(value);
 }
 
 function FundingProgress({ invoice }) {
@@ -220,7 +159,6 @@ function InvoiceActions({
           </button>
         </>
       ))}
-      <span className="rounded-full bg-mint px-3 py-2 text-xs font-black text-black/50">Dodo to Anchor escrow</span>
       <button
         onClick={() => onDelete(invoice.id)}
         className="inline-flex h-10 items-center gap-1 rounded-full px-2 text-xs font-bold text-red-600 underline"
@@ -242,13 +180,6 @@ function InvoiceCard({
   onWithdrawFreelancer,
   onSyncPayment
 }) {
-  const paymentStatus = invoice.payment?.status || PAYMENT_STATES.DRAFT;
-  const stablecoinStatus = normalizePaymentState(invoice.stablecoin?.status || invoice.status);
-  const showPaymentStatus = ![PAYMENT_STATES.DRAFT, "not_started"].includes(paymentStatus);
-  const showStablecoinStatus = stablecoinStatus !== PAYMENT_STATES.DRAFT;
-  const payoutStatus = normalizePaymentState(invoice.seller_payout?.status || invoice.status);
-  const showPayoutStatus = payoutStatus !== PAYMENT_STATES.DRAFT;
-
   return (
     <article className="rounded-xl border border-black/10 bg-white p-4 shadow-md">
       <div className="grid gap-4 xl:grid-cols-[minmax(8rem,0.8fr)_minmax(8rem,0.75fr)_minmax(8rem,0.75fr)_minmax(13rem,1.15fr)] xl:items-start">
@@ -275,30 +206,6 @@ function InvoiceCard({
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <StatusPill className={statusStyles[normalizePaymentState(invoice.status)] || statusStyles.draft}>{paymentStateLabel(invoice.status)}</StatusPill>
-        <StatusPill className="bg-mint text-ink">
-          Dodo to Anchor escrow
-        </StatusPill>
-        <StatusPill className={riskStyles[invoice.risk?.risk_level || "Low"]}>
-          {invoice.risk?.risk_level || "Low"} - {invoice.risk?.risk_score || 0}
-        </StatusPill>
-        {showPaymentStatus && (
-          <StatusPill className={paymentStyles[paymentStatus] || paymentStyles.draft}>
-            Dodo {String(paymentStatus).replaceAll("_", " ")}
-          </StatusPill>
-        )}
-        {showStablecoinStatus && (
-          <StatusPill className={stablecoinStyles[stablecoinStatus] || stablecoinStyles.draft}>
-            Vault {formatStatusLabel(stablecoinStatus)}
-          </StatusPill>
-        )}
-        {showPayoutStatus && (
-          <StatusPill className={payoutStyles[payoutStatus] || payoutStyles.draft}>
-            Withdrawal {formatStatusLabel(payoutStatus)}
-          </StatusPill>
-        )}
-      </div>
       <StablecoinDetails invoice={invoice} />
 
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-black/5 pt-3">
