@@ -6,9 +6,10 @@ export default function HeroSection() {
     <section className="container-shell relative overflow-hidden py-12 sm:py-16">
       <div className="pointer-events-none absolute inset-x-5 top-12 h-px bg-gradient-to-r from-transparent via-[#bed98a] to-transparent" />
       <div className="mx-auto max-w-4xl text-center">
-        <div className="animate-reveal mb-5 inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink shadow-sm">
-          <Zap size={16} className="text-leaf" />
-          Smart-contract settlement for modern SMEs
+        <div className="animate-reveal mx-auto mb-5 inline-flex max-w-full items-center justify-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2 text-sm font-semibold leading-tight text-ink shadow-sm sm:px-4">
+          <Zap size={16} className="shrink-0 text-leaf" />
+          <span className="sm:hidden">Smart-contract settlement</span>
+          <span className="hidden sm:inline">Smart-contract settlement for modern SMEs</span>
         </div>
         <h1 className="hero-title animate-reveal text-5xl font-black leading-[0.98] text-ink sm:text-6xl lg:text-7xl" style={{ animationDelay: "90ms" }}>
           Instant B2B payments,
