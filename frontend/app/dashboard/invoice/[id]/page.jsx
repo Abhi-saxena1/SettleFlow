@@ -358,25 +358,22 @@ export default function InvoiceDetailPage() {
     <>
       <Navbar />
       <AuthModal mode={authMode} onClose={() => setAuthMode(null)} onSuccess={handleAuthSuccess} />
+      {(error || (invoice && fundingError)) && (
+        <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center px-5">
+          <div className="pointer-events-auto w-full max-w-xl rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-center text-sm font-bold text-red-700 shadow-glow">
+            {error || fundingError}
+          </div>
+        </div>
+      )}
       <main className="container-shell py-10">
         <Link href="/dashboard" className="mb-8 inline-flex items-center gap-2 text-sm font-bold text-black/55 hover:text-ink">
           <ArrowLeft size={16} />
           Back to dashboard
         </Link>
 
-        {error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
-            {error}
-          </div>
-        )}
         {notice && (
           <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-bold text-green-700">
             {notice}
-          </div>
-        )}
-        {invoice && fundingError && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
-            {fundingError}
           </div>
         )}
 
