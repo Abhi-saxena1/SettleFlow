@@ -130,6 +130,12 @@ input {
     @apply text-sm font-semibold uppercase tracking-[0.2em] text-leaf;
   }
 
+  .brand-wordmark {
+    font-family: "Blinker", Arial, Helvetica, sans-serif;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+
   .animate-reveal {
     animation: reveal-up 720ms ease both;
   }

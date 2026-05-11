@@ -12,7 +12,7 @@ export default function Navbar() {
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink text-sm font-black text-white">
             SF
           </span>
-          <span className="truncate text-lg font-black tracking-tight">SettleFlow</span>
+          <span className="brand-wordmark truncate text-lg">SettleFlow</span>
         </Link>
         <div className="hidden items-center gap-8 text-sm font-medium text-black/65 md:flex">
           <a href="/#features" className="hover:text-ink">Features</a>
