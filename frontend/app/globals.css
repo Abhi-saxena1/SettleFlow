@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Blinker:wght@700;800;900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Blinker:wght@400;500;700;800;900&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -198,7 +198,7 @@ input {
 
   .hero-title {
     font-family: "Blinker", Arial, Helvetica, sans-serif;
-    font-weight: 900;
+    font-weight: 500;
     letter-spacing: 0;
     text-wrap: balance;
   }
@@ -221,6 +221,12 @@ input {
     position: absolute;
     right: -0.08em;
     z-index: -1;
+  }
+}
+
+@media (min-width: 640px) {
+  .hero-title {
+    font-weight: 900;
   }
 }
 
