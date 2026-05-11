@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Brain, Loader2, ShieldAlert } from "lucide-react";
+import { Brain, CheckCircle2, Loader2, ShieldAlert, SlidersHorizontal } from "lucide-react";
 import { analyzeRisk } from "../lib/api";
 
 export default function AiRiskCard() {
@@ -111,6 +111,36 @@ export default function AiRiskCard() {
                 )}
               </div>
             </div>
+            {!loading && risk?.risk_drivers?.length > 0 && (
+              <div className="mt-4 rounded-xl border border-black/10 p-4">
+                <div className="mb-3 flex items-center gap-2 font-black text-ink">
+                  <SlidersHorizontal className="text-leaf" size={19} />
+                  Risk drivers
+                </div>
+                <div className="space-y-2">
+                  {risk.risk_drivers.map((driver) => (
+                    <p key={driver} className="rounded-lg bg-sage/70 px-3 py-2 text-sm font-semibold leading-6 text-black/65">
+                      {driver}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+            {!loading && risk?.suggested_actions?.length > 0 && (
+              <div className="mt-4 rounded-xl border border-black/10 p-4">
+                <div className="mb-3 flex items-center gap-2 font-black text-ink">
+                  <CheckCircle2 className="text-leaf" size={19} />
+                  Suggested actions
+                </div>
+                <div className="space-y-2">
+                  {risk.suggested_actions.map((action) => (
+                    <p key={action} className="rounded-lg bg-mint/70 px-3 py-2 text-sm font-semibold leading-6 text-black/65">
+                      {action}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -1373,15 +1373,39 @@ async function fundTreasuryEscrowForInvoice(id, { userId = null, source = "autom
   return withPaymentPlan(updated);
 }
 
-function riskRecommendation({ amount, history = [], riskLevel }) {
+function riskLevelFromScore(score) {
+  return score < 35 ? "Low" : score < 70 ? "Medium" : "High";
+}
+
+function summarizeRiskHistory(history = []) {
+  const paid = history.filter((item) => item.status === "paid").length;
+  const late = history.filter((item) => item.status === "late").length;
+  const disputed = history.filter((item) => item.status === "disputed").length;
+  const amounts = history.map((item) => Number(item.amount || 0)).filter((value) => Number.isFinite(value));
+  const settlementHours = history
+    .map((item) => Number(item.settledInHours || 0))
+    .filter((value) => Number.isFinite(value) && value > 0);
+
+  return {
+    paid,
+    late,
+    disputed,
+    count: history.length,
+    averageAmount: amounts.length ? amounts.reduce((sum, value) => sum + value, 0) / amounts.length : 10000,
+    averageSettlementHours: settlementHours.length
+      ? settlementHours.reduce((sum, value) => sum + value, 0) / settlementHours.length
+      : 24
+  };
+}
+
+function riskRecommendation({ amount, history = [], riskLevel, score }) {
   const numericAmount = Number(amount || 0);
-  const latePayments = history.filter((item) => item.status === "late").length;
-  const disputedPayments = history.filter((item) => item.status === "disputed").length;
+  const summary = summarizeRiskHistory(history);
   const amountLabel = `${numericAmount.toLocaleString()} USDC`;
-  const historySignal = disputedPayments > 0
-    ? `${disputedPayments} disputed buyer payment${disputedPayments === 1 ? "" : "s"}`
-    : latePayments > 0
-      ? `${latePayments} late buyer payment${latePayments === 1 ? "" : "s"}`
+  const historySignal = summary.disputed > 0
+    ? `${summary.disputed} disputed buyer payment${summary.disputed === 1 ? "" : "s"}`
+    : summary.late > 0
+      ? `${summary.late} late buyer payment${summary.late === 1 ? "" : "s"}`
       : "clean buyer history";
   const amountBand = numericAmount >= 50000
     ? "very large"
@@ -1394,40 +1418,94 @@ function riskRecommendation({ amount, history = [], riskLevel }) {
           : "small";
 
   if (riskLevel === "Low") {
-    return `Approve escrow for ${amountLabel}. This is a ${amountBand} invoice with ${historySignal}; keep the normal buyer release step before seller withdrawal.`;
+    return `Approve escrow for ${amountLabel}. Score ${score} reflects a ${amountBand} invoice with ${historySignal}; keep the normal buyer release step before seller withdrawal.`;
   }
 
   if (riskLevel === "Medium") {
-    return `Review escrow for ${amountLabel} before release. This ${amountBand} invoice carries ${historySignal}, so confirm delivery evidence before allowing withdrawal.`;
+    return `Review escrow for ${amountLabel} before release. Score ${score} reflects a ${amountBand} invoice with ${historySignal}, so confirm delivery evidence before allowing withdrawal.`;
   }
 
-  return `Request additional verification before funding or releasing ${amountLabel}. This ${amountBand} invoice plus ${historySignal} should require manual approval and dispute readiness.`;
+  return `Request additional verification before funding or releasing ${amountLabel}. Score ${score} reflects a ${amountBand} invoice plus ${historySignal}; require manual approval and dispute readiness.`;
+}
+
+function buildRiskDrivers(amount, history = []) {
+  const numericAmount = Number(amount || 0);
+  const summary = summarizeRiskHistory(history);
+  const ratio = numericAmount / Math.max(summary.averageAmount, 1);
+  const drivers = [
+    `Invoice value is ${ratio.toFixed(1)}x the buyer's average historical transaction.`,
+    `${summary.late} late and ${summary.disputed} disputed payments found across ${summary.count} prior transactions.`,
+    `Average historical settlement time is ${Math.round(summary.averageSettlementHours)} hours.`
+  ];
+
+  if (numericAmount >= 50000) {
+    drivers.unshift("Very large invoice size increases exposure before delivery is confirmed.");
+  } else if (numericAmount >= 25000) {
+    drivers.unshift("Large invoice size needs stronger release controls.");
+  } else if (numericAmount < 500) {
+    drivers.unshift("Small invoice size keeps payment exposure limited.");
+  }
+
+  return drivers;
+}
+
+function suggestedRiskActions(riskLevel) {
+  if (riskLevel === "Low") {
+    return [
+      "Approve escrow funding with the standard release workflow.",
+      "Keep delivery confirmation attached before final seller withdrawal.",
+      "Monitor for unusual delays because buyer history includes a late payment.",
+      "Use normal dispute windows unless the invoice scope changes."
+    ];
+  }
+
+  if (riskLevel === "Medium") {
+    return [
+      "Fund escrow, but keep release approval manual.",
+      "Request delivery evidence before seller withdrawal.",
+      "Confirm buyer authorization for the full invoice amount.",
+      "Split settlement into milestone releases if delivery risk is unclear."
+    ];
+  }
+
+  return [
+    "Pause automatic release until buyer and seller verification is complete.",
+    "Request signed delivery acceptance and updated commercial documents.",
+    "Use milestone-based escrow or reduce the initial funded amount.",
+    "Escalate to manual review before funds are released."
+  ];
 }
 
 function fallbackRiskScore(amount, history = []) {
   const numericAmount = Number(amount || 0);
-  const latePayments = history.filter((item) => item.status === "late").length;
-  const disputedPayments = history.filter((item) => item.status === "disputed").length;
-  const averageHistoryAmount = history.length
-    ? history.reduce((sum, item) => sum + Number(item.amount || 0), 0) / history.length
-    : 10000;
-  const amountPressure = Math.min(58, Math.round(Math.log10(numericAmount + 1) * 9));
-  const relativePressure = Math.min(18, Math.round((numericAmount / Math.max(averageHistoryAmount, 1)) * 8));
-  const microInvoiceDiscount = numericAmount < 100 ? -4 : numericAmount < 500 ? -1 : 0;
-  const largeInvoicePenalty = numericAmount >= 50000 ? 12 : numericAmount >= 25000 ? 7 : numericAmount >= 10000 ? 3 : 0;
+  const summary = summarizeRiskHistory(history);
+  const amountPressure = Math.min(45, Math.round(Math.log10(numericAmount + 1) * 8));
+  const relativePressure = Math.min(24, Math.round((numericAmount / Math.max(summary.averageAmount, 1)) * 7));
+  const settlementDelayPenalty = Math.min(12, Math.round(Math.max(0, summary.averageSettlementHours - 24) / 8));
+  const microInvoiceDiscount = numericAmount < 100 ? -6 : numericAmount < 500 ? -7 : 0;
+  const largeInvoicePenalty = numericAmount >= 50000 ? 14 : numericAmount >= 25000 ? 8 : numericAmount >= 10000 ? 4 : 0;
   const score = Math.max(
     1,
     Math.min(
       95,
-      4 + amountPressure + relativePressure + microInvoiceDiscount + largeInvoicePenalty + latePayments * 10 + disputedPayments * 22
+      4 +
+        amountPressure +
+        relativePressure +
+        settlementDelayPenalty +
+        microInvoiceDiscount +
+        largeInvoicePenalty +
+        summary.late * 8 +
+        summary.disputed * 24
     )
   );
-  const riskLevel = score < 35 ? "Low" : score < 70 ? "Medium" : "High";
+  const riskLevel = riskLevelFromScore(score);
 
   return {
     risk_score: score,
     risk_level: riskLevel,
-    recommendation: riskRecommendation({ amount: numericAmount, history, riskLevel }),
+    recommendation: riskRecommendation({ amount: numericAmount, history, riskLevel, score }),
+    risk_drivers: buildRiskDrivers(numericAmount, history),
+    suggested_actions: suggestedRiskActions(riskLevel),
     analyzed_amount: numericAmount
   };
 }
@@ -1446,7 +1524,7 @@ async function analyzeRisk({ amount, buyerHistory = [] }) {
         {
           role: "system",
           content:
-            "You are a B2B payments risk analyst. Return only JSON with risk_score number from 1-100, risk_level Low|Medium|High, and recommendation string. The score must be sensitive to the exact invoice amount; for example 22 USDC and 290 USDC should not receive the same score unless buyer history strongly justifies it."
+            "You are a B2B payments risk analyst. Return only JSON with risk_score number from 1-100, risk_level Low|Medium|High, recommendation string, risk_drivers array, and suggested_actions array. The score must be sensitive to invoice amount, buyer history, late/disputed payments, relative invoice size, and settlement delays."
         },
         {
           role: "user",
@@ -1465,11 +1543,17 @@ async function analyzeRisk({ amount, buyerHistory = [] }) {
     const score = Number.isFinite(parsedScore)
       ? Math.max(1, Math.min(95, Math.round((parsedScore + deterministicRisk.risk_score * 2) / 3)))
       : deterministicRisk.risk_score;
-    const riskLevel = score < 35 ? "Low" : score < 70 ? "Medium" : "High";
+    const riskLevel = riskLevelFromScore(score);
     return {
       risk_score: score,
       risk_level: riskLevel,
-      recommendation: riskRecommendation({ amount, history: buyerHistory, riskLevel }),
+      recommendation: parsed?.recommendation || riskRecommendation({ amount, history: buyerHistory, riskLevel, score }),
+      risk_drivers: Array.isArray(parsed?.risk_drivers) && parsed.risk_drivers.length
+        ? parsed.risk_drivers.slice(0, 5)
+        : buildRiskDrivers(amount, buyerHistory),
+      suggested_actions: Array.isArray(parsed?.suggested_actions) && parsed.suggested_actions.length
+        ? parsed.suggested_actions.slice(0, 5)
+        : suggestedRiskActions(riskLevel),
       analyzed_amount: Number(amount || 0)
     };
   } catch (error) {
