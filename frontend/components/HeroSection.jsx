@@ -12,7 +12,9 @@ export default function HeroSection() {
         </div>
         <h1 className="animate-reveal text-5xl font-black leading-[0.98] tracking-tight text-ink sm:text-6xl lg:text-7xl" style={{ animationDelay: "90ms" }}>
           Instant B2B payments,
-          <span className="editorial-highlight mx-2 inline-block">settled in seconds.</span>
+          <span className="hero-highlight mx-auto mt-1 block w-fit px-2 sm:mx-2 sm:mt-0 sm:inline-block">
+            settled in seconds.
+          </span>
         </h1>
         <p className="animate-reveal mx-auto mt-6 max-w-2xl text-lg leading-8 text-black/65" style={{ animationDelay: "180ms" }}>
           Create invoices, lock funds in escrow, assess transaction risk, and release settlement in seconds using programmable payment flows.
