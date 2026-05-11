@@ -1,4 +1,5 @@
 import AiRiskCard from "../components/AiRiskCard";
+import AboutSection from "../components/AboutSection";
 import CTASection from "../components/CTASection";
 import DashboardPreview from "../components/DashboardPreview";
 import FeaturesSection from "../components/FeaturesSection";
@@ -15,6 +16,7 @@ export default function HomePage() {
         <AiRiskCard />
         <DashboardPreview />
         <CTASection />
+        <AboutSection />
       </main>
     </>
   );
