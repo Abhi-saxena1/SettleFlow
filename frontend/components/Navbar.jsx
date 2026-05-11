@@ -16,6 +16,7 @@ export default function Navbar() {
         </Link>
         <div className="hidden items-center gap-8 text-sm font-medium text-black/65 md:flex">
           <a href="/#features" className="hover:text-ink">Features</a>
+          <a href="/#how-it-works" className="hover:text-ink">How it works</a>
           <a href="/#risk" className="hover:text-ink">AI Risk</a>
           <Link href="/dashboard" className="hover:text-ink">Dashboard</Link>
         </div>

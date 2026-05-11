@@ -4,6 +4,7 @@ import CTASection from "../components/CTASection";
 import DashboardPreview from "../components/DashboardPreview";
 import FeaturesSection from "../components/FeaturesSection";
 import HeroSection from "../components/HeroSection";
+import HowItWorksSection from "../components/HowItWorksSection";
 import Navbar from "../components/Navbar";
 
 export default function HomePage() {
@@ -13,6 +14,7 @@ export default function HomePage() {
       <main>
         <HeroSection />
         <FeaturesSection />
+        <HowItWorksSection />
         <AiRiskCard />
         <DashboardPreview />
         <CTASection />
