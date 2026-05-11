@@ -51,16 +51,16 @@ export default function AiRiskCard() {
 
   return (
     <section id="risk" className="container-shell overflow-hidden py-14 sm:py-20">
-      <div className="animate-reveal grid w-full max-w-full overflow-hidden rounded-[1.8rem] bg-[#c8dc94] p-3 shadow-glow sm:p-4 lg:grid-cols-[0.9fr_1.1fr]">
+      <div className="animate-reveal grid w-full max-w-full overflow-hidden rounded-[1.8rem] bg-[#c8dc94] p-3 shadow-glow sm:p-4 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
         <div className="paper-grid relative min-w-0 rounded-[1.25rem] p-6 text-ink sm:p-10 lg:p-12">
           <div className="pointer-events-none absolute inset-x-6 bottom-6 h-px bg-gradient-to-r from-leaf/40 via-white/10 to-transparent sm:inset-x-8 sm:bottom-8" />
           <div className="mb-6 inline-flex max-w-full items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold shadow-sm">
             <Brain size={17} className="text-leaf" />
             AI Risk Analysis
           </div>
-          <h2 className="text-3xl font-black tracking-tight sm:text-5xl">Approve the right payments faster.</h2>
+          <h2 className="text-3xl font-black tracking-tight sm:text-4xl">Approve payments faster.</h2>
           <p className="mt-5 max-w-prose leading-7 text-black/60 sm:leading-8">
-            SettleFlow evaluates invoice amount and mock buyer history, then returns a structured risk score, level, and recommendation.
+            SettleFlow reviews invoice size and buyer history, then returns a score, risk drivers, and suggested actions.
           </p>
         </div>
         <div className="min-w-0 p-3 sm:p-8 lg:p-10">
