@@ -11,7 +11,7 @@ export default function HeroSection() {
           <span className="sm:hidden">Smart-contract settlement</span>
           <span className="hidden sm:inline">Smart-contract settlement for modern SMEs</span>
         </div>
-        <h1 className="hero-title animate-reveal text-5xl font-black leading-[0.98] text-ink sm:text-6xl lg:text-7xl" style={{ animationDelay: "90ms" }}>
+        <h1 className="hero-title animate-reveal text-5xl leading-[0.98] text-ink sm:text-6xl lg:text-7xl" style={{ animationDelay: "90ms" }}>
           Instant B2B payments,
           <span className="hero-highlight mx-auto mt-1 block w-fit px-2 sm:mx-2 sm:mt-0 sm:inline-block">
             settled in seconds.
