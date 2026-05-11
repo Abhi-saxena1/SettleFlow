@@ -10,7 +10,7 @@ export default function HeroSection() {
           <Zap size={16} className="text-leaf" />
           Smart-contract settlement for modern SMEs
         </div>
-        <h1 className="animate-reveal text-5xl font-black leading-[0.98] tracking-tight text-ink sm:text-6xl lg:text-7xl" style={{ animationDelay: "90ms" }}>
+        <h1 className="hero-title animate-reveal text-5xl font-black leading-[0.98] text-ink sm:text-6xl lg:text-7xl" style={{ animationDelay: "90ms" }}>
           Instant B2B payments,
           <span className="hero-highlight mx-auto mt-1 block w-fit px-2 sm:mx-2 sm:mt-0 sm:inline-block">
             settled in seconds.

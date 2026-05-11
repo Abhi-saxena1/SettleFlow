@@ -188,10 +188,31 @@ input {
     background: linear-gradient(180deg, transparent 48%, #f7b8c7 48%, #f7b8c7 82%, transparent 82%);
   }
 
+  .hero-title {
+    font-family: Arial, Helvetica, sans-serif;
+    font-weight: 900;
+    letter-spacing: 0;
+    text-wrap: balance;
+  }
+
   .hero-highlight {
-    background: linear-gradient(180deg, transparent 56%, #f7b8c7 56%, #f7b8c7 86%, transparent 86%);
+    background: none;
+    isolation: isolate;
+    position: relative;
     -webkit-box-decoration-break: clone;
     box-decoration-break: clone;
+  }
+
+  .hero-highlight::before {
+    background: linear-gradient(90deg, rgba(247, 184, 199, 0), rgba(247, 184, 199, 0.95) 10%, #f7b8c7 50%, rgba(247, 184, 199, 0.95) 90%, rgba(247, 184, 199, 0));
+    bottom: 0.06em;
+    box-shadow: 0 10px 22px rgba(247, 184, 199, 0.34);
+    content: "";
+    height: 0.34em;
+    left: -0.08em;
+    position: absolute;
+    right: -0.08em;
+    z-index: -1;
   }
 }
 
