@@ -6,11 +6,11 @@ import { createInvoice } from "../lib/api";
 
 export default function InvoiceForm({ disabled = false, onCreated, onError, onLoginRequired }) {
   const [form, setForm] = useState({
-    title: "Website launch escrow",
-    description: "Escrow-protected payment for completed SME project delivery.",
-    amount: "15000",
-    buyer: "Northstar Retail",
-    seller: "Atlas Components",
+    title: "",
+    description: "",
+    amount: "",
+    buyer: "",
+    seller: "",
     seller_wallet: "",
     payment_method: "dodo"
   });
@@ -64,6 +64,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             value={form.title}
             onChange={(event) => updateField("title", event.target.value)}
             className="rounded-xl border border-black/10 px-4 py-2.5 text-base font-semibold text-ink outline-none focus:border-leaf"
+            placeholder="Project or invoice name"
           />
         </label>
         <label className="grid gap-2 text-sm font-bold text-black/55">
@@ -73,6 +74,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             value={form.description}
             onChange={(event) => updateField("description", event.target.value)}
             className="resize-none rounded-xl border border-black/10 px-4 py-2.5 text-base font-semibold text-ink outline-none focus:border-leaf"
+            placeholder="What is this payment for?"
           />
         </label>
         <label className="grid gap-2 text-sm font-bold text-black/55">
@@ -84,6 +86,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             value={form.amount}
             onChange={(event) => updateField("amount", event.target.value)}
             className="rounded-xl border border-black/10 px-4 py-2.5 text-base font-semibold text-ink outline-none focus:border-leaf"
+            placeholder="0"
           />
         </label>
         <label className="grid gap-2 text-sm font-bold text-black/55">
@@ -93,6 +96,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             value={form.buyer}
             onChange={(event) => updateField("buyer", event.target.value)}
             className="rounded-xl border border-black/10 px-4 py-2.5 text-base font-semibold text-ink outline-none focus:border-leaf"
+            placeholder="Buyer name"
           />
         </label>
         <label className="grid gap-2 text-sm font-bold text-black/55">
@@ -102,6 +106,7 @@ export default function InvoiceForm({ disabled = false, onCreated, onError, onLo
             value={form.seller}
             onChange={(event) => updateField("seller", event.target.value)}
             className="rounded-xl border border-black/10 px-4 py-2.5 text-base font-semibold text-ink outline-none focus:border-leaf"
+            placeholder="Seller name"
           />
         </label>
         <label className="grid gap-2 text-sm font-bold text-black/55">
