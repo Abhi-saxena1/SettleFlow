@@ -51,7 +51,7 @@ export default function AiRiskCard() {
 
   return (
     <section id="risk" className="container-shell overflow-hidden py-14 sm:py-20">
-      <div className="animate-reveal grid w-full max-w-full overflow-hidden rounded-[1.8rem] bg-[#c8dc94] p-3 shadow-glow sm:p-4 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
+      <div className="animate-reveal grid w-full max-w-full gap-6 overflow-hidden rounded-[1.8rem] bg-[#c8dc94] p-3 shadow-glow sm:p-4 lg:grid-cols-[0.9fr_1.1fr] lg:items-start lg:gap-10">
         <div className="paper-grid relative min-w-0 rounded-[1.25rem] p-6 text-ink sm:p-8 lg:p-10">
           <div className="pointer-events-none absolute inset-x-6 bottom-6 h-px bg-gradient-to-r from-leaf/40 via-white/10 to-transparent sm:inset-x-8 sm:bottom-8" />
           <div className="mb-6 inline-flex max-w-full items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold shadow-sm">
@@ -63,7 +63,7 @@ export default function AiRiskCard() {
             Review invoice size, buyer history, risk drivers, and next actions before releasing funds.
           </p>
         </div>
-        <div className="min-w-0 p-3 sm:p-8 lg:p-10">
+        <div className="min-w-0">
           <div className="w-full min-w-0 rounded-[1.25rem] border border-black/10 bg-white p-4 shadow-md hover:-translate-y-1 hover:shadow-glow sm:p-6">
             <label className="text-sm font-bold text-black/55" htmlFor="risk-amount">Invoice amount</label>
             <div className="mt-2 grid gap-3 sm:flex">
